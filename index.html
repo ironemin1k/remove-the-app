@@ -46,7 +46,6 @@
             border: 2px solid #00FFFF;
             transition: box-shadow 0.3s ease-out;
             cursor: pointer; 
-            /* Mobil ekranlarda daha iyi sığması için max genişlikleri kaldırıyoruz, JS yönetecek */
         }
         .flow-active-shadow {
             box-shadow: 0 0 100px hsla(var(--bg-hue), 100%, 70%, 0.9), 0 0 30px hsla(var(--bg-hue), 100%, 80%, 1);
@@ -73,6 +72,7 @@
         }
     </script>
 </head>
+
 <body class="overflow-hidden text-gray-100"> 
 
     <div class="main-content flex items-center justify-start"> 
@@ -91,8 +91,8 @@
             <div class="text-sm font-medium text-center border-b border-gray-700/50 pb-1">
                 High: <span id="highScore" class="text-green-400 font-extrabold text-xl font-mono">0</span>
             </div>
-            <div id="statusMessage" class="col-span-3 text-sm font-medium text-center border-b border-gray-700/50 pb-1 text-gray-400 transition duration-300">
-                Waiting...
+            <div id="statusMessage" class="col-span-3 text-sm font-medium text-center border-b border-gray-700/50 pb-1 text-cyan-400 transition duration-300">
+                GET READY!
             </div>
         </div>
         
@@ -112,7 +112,7 @@
         const multiplierEl = document.getElementById('multiplier'); 
         const highScoreEl = document.getElementById('highScore');
         const statusMessageEl = document.getElementById('statusMessage');
-        const canvasContainer = document.getElementById('canvasContainer'); // Yeni kapsayıcı
+        const canvasContainer = document.getElementById('canvasContainer'); 
 
         // --- GAME SETTINGS ---
         const ORB_RADIUS = 15;
@@ -171,7 +171,6 @@
                 return;
             }
 
-            // ... (Tone.js ayarları aynı kaldı)
             flowPad = new Tone.Synth({
                 oscillator: { type: 'triangle' },
                 envelope: { attack: 0.5, decay: 0.1, sustain: 1.0, release: 0.5 },
@@ -196,13 +195,11 @@
         }
 
         async function startAudioContext() {
-            // Ses bağlamını başlatmayı deniyoruz. 
-            // Eğer mobil cihazda kullanıcı etkileşimi yoksa, bu kısım hata vermez
-            // ama ses başlamaz. Ancak oyunun çalışmasını engellemez.
             if (Tone.context.state !== 'running') {
                 try {
                     await Tone.start();
                 } catch (e) {
+                    // Mobil kısıtlamalar nedeniyle hata verebilir, ama oyunu durdurmaz.
                     console.warn("AudioContext could not start automatically. User interaction needed on mobile.", e);
                 }
             }
@@ -250,15 +247,12 @@
         //                 PROPORTIONAL INPUT LOGIC
         // =================================================================
 
-        // Fonksiyonlar aynı kaldı...
-
         function handlePressStart(e) {
-            // ... (Kod aynı)
              if (!animationFrameId) return; 
             if (isPressing) return;
             
             // Eğer AudioContext başlamadıysa, ilk tıklamayı ses bağlamını başlatmak için kullan
-            if (Tone.context.state !== 'running') {
+            if (Tone.context.state !== 'running' && isAudioReady) {
                 startAudioContext();
             }
 
@@ -270,7 +264,6 @@
         }
 
         function handlePressEnd(e) {
-            // ... (Kod aynı)
             if (!animationFrameId || !isPressing) return;
             
             if (e.code === 'Space' || e.type === 'touchend' || e.type === 'mouseup') {
@@ -290,7 +283,7 @@
                 e.preventDefault(); 
                 
                 // Instant feedback sound
-                if (isAudioReady && Tone.context.state === 'running') { // Sadece ses açıksa çal
+                if (isAudioReady && Tone.context.state === 'running') {
                     pressFeedback.triggerAttackRelease("G6", "64n"); 
                 }
 
@@ -304,51 +297,51 @@
         // --- GAME LOOP, UPDATE, AND DRAW CODE ---
 
         function resizeCanvas() {
-            // Yeni kapsayıcıdan boyutları al
             const containerRect = canvasContainer.getBoundingClientRect();
             
-            // Canvas'ı biraz daha agresif bir şekilde boyutlandırıyoruz
-            // Mobil cihazlarda tam ekranı daha iyi kullanmak için padding'i küçült
             const padding = 10; 
             const containerWidth = containerRect.width - padding * 2;
             const containerHeight = containerRect.height - padding * 2;
             
-            const aspectRatio = 400 / 600; // Oyunun hedef oranı (2:3)
+            const aspectRatio = 400 / 600; 
             
             let maxWidth = containerWidth;
             let maxHeight = containerHeight;
             
-            // Oran koruma: Yatayda mı dikeyde mi daha çok yer var?
             if (maxWidth / maxHeight > aspectRatio) {
-                // Konteyner daha geniş (yatayda bol yer var), yüksekliği ana al
                 maxWidth = maxHeight * aspectRatio;
             } else {
-                // Konteyner daha dar (dikeyde bol yer var), genişliği ana al
                 maxHeight = maxWidth / aspectRatio;
             }
             
-            // Boyutları ayarla (tam sayı yap)
             canvas.width = Math.floor(maxWidth);
             canvas.height = Math.floor(maxHeight);
 
-            // Orb pozisyonunu merkeze çek
             orb.x = canvas.width / 2;
             orb.y = canvas.height - 50;
         }
 
+        /**
+         * OYUNU KOŞULSUZ BAŞLATAN FONKSİYON
+         */
         function startGame() {
-            // Artık bu direkt window.onload'da çağrılacak. Ses başlangıcını kaldırdık.
+            // Sesi başlatmayı dene
+            if (isAudioReady) {
+                startAudioContext();
+            }
+            
+            lastTimestamp = performance.now(); 
+            
+            // Oyun döngüsünü başlat
             if (!animationFrameId) {
-                lastTimestamp = performance.now(); 
                 gameLoop();
                 statusMessageEl.textContent = 'CATCH THE RHYTHM!';
+                statusMessageEl.classList.remove('text-gray-400');
+                statusMessageEl.classList.add('text-cyan-400');
             }
         }
 
-        // update ve draw fonksiyonları aynı kaldı... (performans ve skor mantığı)
-
         function update() {
-            // ... (Kod aynı)
             const currentTimestamp = performance.now();
             const deltaTime = currentTimestamp - lastTimestamp;
             lastTimestamp = currentTimestamp;
@@ -356,39 +349,246 @@
             // 1. Orb Physics
             orb.velocityY += GRAVITY;
             orb.y += orb.velocityY;
-            // ... (Kalan update mantığı aynı)
+
+            // 2. Screen Boundaries
+            if (orb.y + orb.radius > canvas.height) {
+                orb.y = canvas.height - orb.radius;
+                orb.velocityY = 0;
+            }
+            if (orb.y - orb.radius < 0) {
+                orb.y = 0 + orb.radius;
+                orb.velocityY = 0;
+            }
+
+            // 3. Flow Zone Movement
+            flowZone.time += flowZone.speed;
+            const zoneCenter = (canvas.height / 2) + (Math.sin(flowZone.time) * ZONE_AMPLITUDE);
+            flowZone.y = zoneCenter - (flowZone.height / 2); 
             
-            // 4. "FLOW" CHECK (Ses sadece Tone.context.state === 'running' ise çalınmalı)
-            // ...
-             if (topOfOrb >= topOfZone && bottomOfOrb <= bottomOfZone) {
+            if (flowZone.y < 0) flowZone.y = 0;
+            if (flowZone.y + flowZone.height > canvas.height) flowZone.y = canvas.height - flowZone.height;
+
+            // 4. "FLOW" CHECK
+            const topOfOrb = orb.y - orb.radius;
+            const bottomOfOrb = orb.y + orb.radius;
+            const topOfZone = flowZone.y;
+            const bottomOfZone = flowZone.y + flowZone.height;
+
+            const oldMultiplier = scoreMultiplier;
+            const oldCombo = combo;
+
+            if (topOfOrb >= topOfZone && bottomOfOrb <= bottomOfZone) {
                 // IN FLOW
                 if (!isInFlow) {
-                    // ... (Görsel ve skor mantığı)
+                    isInFlow = true;
+                    flowDurationMs = 0; 
+                    scoreMultiplier = 1;
                     if(isAudioReady && Tone.context.state === 'running') flowPad.triggerAttack(currentFlowNote); 
 
-                    // ...
+                    statusMessageEl.textContent = 'FLOW!'; 
+                    statusMessageEl.classList.add('text-cyan-400', 'font-bold');
+                    statusMessageEl.classList.remove('text-red-400', 'text-gray-400', 'text-green-400');
+                    canvas.classList.add('flow-active-shadow'); 
                 }
-                // ... (Kalan IN FLOW mantığı)
+                
+                // NEW SCORING: Time-Based Multiplier
+                flowDurationMs += deltaTime;
+                const secondsInFlow = Math.floor(flowDurationMs / TIME_TICK_MS);
+                
+                scoreMultiplier = 1 + (secondsInFlow * 2);
+
+                score += scoreMultiplier * (deltaTime / 16.66); 
+                
+                combo++;
+                
+                if (scoreMultiplier > oldMultiplier && isAudioReady && Tone.context.state === 'running') {
+                    missEffect.triggerAttackRelease("E5", "16n", Tone.now(), 0.5); 
+                }
+
+                if (combo % 50 === 0 && combo !== 0 && oldCombo < combo) {
+                    comboFlashRadius1 = 10; 
+                    comboFlashRadius2 = 1; 
+                    if (isAudioReady && Tone.context.state === 'running') {
+                        flowPad.triggerAttackRelease("A5", "16n"); 
+                    }
+                }
+                
+                // Dynamic Difficulty
+                flowZone.speed = Math.min(MAX_ZONE_SPEED, BASE_ZONE_SPEED + (combo * 0.0001));
+                flowZone.height = Math.max(MIN_ZONE_HEIGHT, BASE_ZONE_HEIGHT - (combo * 0.05));
+                
+                // Dynamic Color Cycling & Pitch Modulation
+                const baseHue = 180; 
+                let hueOffset = (combo % COMBO_COLOR_CYCLE) * (360 / COMBO_COLOR_CYCLE);
+                let dynamicHue = (baseHue + hueOffset) % 360;
+                
+                const minMidi = 60; 
+                const maxMidi = 74; 
+                const pitchRange = maxMidi - minMidi;
+                const maxComboForFullPitch = 300;
+                
+                let targetMidi = minMidi + Math.min(maxComboForFullPitch, combo) * (pitchRange / maxComboForFullPitch);
+                targetMidi = Math.round(targetMidi);
+                
+                const targetNote = Tone.Midi(targetMidi).toNote();
+                
+                if (targetNote !== currentFlowNote && isAudioReady && Tone.context.state === 'running') {
+                    currentFlowNote = targetNote;
+                    flowPad.frequency.rampTo(currentFlowNote, 0.2); 
+                }
+
+                const maxComboVisual = 300;
+                const saturation = Math.min(100, 30 + (combo / maxComboVisual) * 70); 
+                const lightness = Math.max(5, 12 - (combo / maxComboVisual) * 7); 
+
+                document.documentElement.style.setProperty('--bg-hue', dynamicHue);
+                document.documentElement.style.setProperty('--bg-saturation', `${saturation}%`);
+                document.documentElement.style.setProperty('--bg-lightness', `${lightness}%`);
+                
             } else {
                 // OUT OF FLOW
                 if (isInFlow) {
-                    // ... (Görsel ve skor mantığı)
+                    isInFlow = false;
+                    checkAndSaveScore(); 
+                    combo = 0; 
+                    flowDurationMs = 0;
+                    scoreMultiplier = 1; // Reset Multiplier
+                    comboFlashRadius1 = 0;
+                    comboFlashRadius2 = 0;
+                    
                     if(isAudioReady && Tone.context.state === 'running') {
                         flowPad.triggerRelease();
                         missEffect.triggerAttackRelease("C2", "8n"); 
                     }
-                    // ... (Kalan OUT OF FLOW mantığı)
+                    
+                    currentFlowNote = 'C4'; 
+                    flowZone.speed = BASE_ZONE_SPEED;
+                    flowZone.height = BASE_ZONE_HEIGHT;
+                    
+                    statusMessageEl.textContent = 'Rhythm Lost'; 
+                    statusMessageEl.classList.remove('text-cyan-400', 'font-bold', 'text-green-400');
+                    statusMessageEl.classList.add('text-red-400');
+                    canvas.classList.remove('flow-active-shadow');
+
+                    // Reset colors to original state
+                    document.documentElement.style.setProperty('--bg-hue', 220); 
+                    document.documentElement.style.setProperty('--bg-saturation', '20%');
+                    document.documentElement.style.setProperty('--bg-lightness', '8%');
+
+                    setTimeout(() => {
+                        if (!isInFlow && score <= highScore) { 
+                            statusMessageEl.textContent = 'GET READY!'; 
+                            statusMessageEl.classList.remove('text-red-400');
+                            statusMessageEl.classList.add('text-cyan-400');
+                        }
+                    }, 1500);
+                }
+            }
+            
+            // Combo Flash Animation
+            if (comboFlashRadius1 > 0) {
+                comboFlashRadius1 += 8; 
+                comboFlashRadius2 += 5; 
+                if (comboFlashRadius1 > canvas.width * 0.9) {
+                    comboFlashRadius1 = 0;
+                    comboFlashRadius2 = 0;
                 }
             }
 
-            // ... (UI Güncelleme)
-            scoreEl.textContent = Math.floor(score).toLocaleString();
+            // Update Score/Combo UI
+            scoreEl.textContent = Math.floor(score).toLocaleString(); 
             multiplierEl.textContent = scoreMultiplier; 
         }
 
         function draw() {
-             // ... (Kod aynı)
-             // Canvas çizim mantığı aynı kalacak
+            const flowHue = parseInt(document.documentElement.style.getPropertyValue('--bg-hue')) || 180;
+            const isFlowing = isInFlow;
+            const currentCombo = combo;
+            
+            // 1. Ekranı Temizle (Clean Clear)
+            ctx.fillStyle = '#0f0c1c'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.globalCompositeOperation = 'lighter'; 
+
+            // Combo Flash Ring
+            if (comboFlashRadius1 > 0) {
+                const maxRadius = canvas.width * 0.9;
+                
+                ctx.beginPath();
+                ctx.arc(orb.x, orb.y, comboFlashRadius1, 0, Math.PI * 2);
+                const alpha1 = 1 - (comboFlashRadius1 / maxRadius);
+                ctx.strokeStyle = `hsla(${flowHue}, 100%, 75%, ${alpha1 * 0.9})`; 
+                ctx.lineWidth = 6;
+                ctx.stroke();
+                ctx.closePath();
+
+                if (comboFlashRadius2 > 0) {
+                    ctx.beginPath();
+                    ctx.arc(orb.x, orb.y, comboFlashRadius2, 0, Math.PI * 2);
+                    const alpha2 = 1 - (comboFlashRadius2 / maxRadius);
+                    ctx.strokeStyle = `hsla(${flowHue}, 100%, 50%, ${alpha2 * 0.5})`; 
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    ctx.closePath();
+                }
+            }
+
+            // 2. Draw Flow Zone
+            ctx.fillStyle = `hsla(${flowHue}, ${isFlowing ? 90 : 50}%, ${isFlowing ? 30 : 20}%, 0.15)`;
+            ctx.fillRect(0, flowZone.y - 5, canvas.width, flowZone.height + 10);
+
+            ctx.fillStyle = `hsla(${flowHue}, ${isFlowing ? 100 : 60}%, ${isFlowing ? 40 : 25}%, 0.25)`; 
+            ctx.fillRect(0, flowZone.y, canvas.width, flowZone.height);
+
+            ctx.fillStyle = `hsla(${flowHue}, ${isFlowing ? 100 : 70}%, ${isFlowing ? 50 : 35}%, 0.4)`; 
+            ctx.fillRect(0, flowZone.y + flowZone.height * 0.15, canvas.width, flowZone.height * 0.7);
+
+            ctx.strokeStyle = `hsla(${flowHue}, ${isFlowing ? 100 : 70}%, ${isFlowing ? 65 : 45}%, 1)`;
+            ctx.lineWidth = isFlowing ? 2 : 1;
+            ctx.strokeRect(0, flowZone.y, canvas.width, flowZone.height);
+            ctx.lineWidth = 1; 
+
+            // 3. Draw Orb 
+            const orbColor = isFlowing ? `hsl(${flowHue}, 100%, 75%)` : '#FFFFFF';
+            const orbGlowColor = isFlowing ? `hsla(${flowHue}, 100%, 70%, 1)` : 'rgba(255, 255, 255, 0.5)';
+            
+            ctx.shadowBlur = isFlowing ? 25 : 8;
+            ctx.shadowColor = orbGlowColor;
+            
+            ctx.beginPath();
+            ctx.arc(orb.x, orb.y, orb.radius, 0, Math.PI * 2);
+            ctx.fillStyle = orbColor;
+            ctx.fill();
+            ctx.shadowBlur = 0; 
+            ctx.closePath();
+            
+            if (isFlowing) {
+                 ctx.beginPath();
+                 ctx.arc(orb.x, orb.y, orb.radius * 0.6, 0, Math.PI * 2);
+                 ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; 
+                 ctx.fill();
+                 ctx.closePath();
+            }
+
+            if (isFlowing) {
+                const auraRadius = orb.radius + 5 + Math.min(10, currentCombo / 30);
+                ctx.beginPath();
+                ctx.arc(orb.x, orb.y, auraRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${flowHue}, 100%, 60%, ${0.3 + Math.min(0.7, currentCombo/100)})`;
+                ctx.lineWidth = 4;
+                ctx.stroke();
+                ctx.closePath();
+            }
+
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        // --- GAME LOOP ---
+        function gameLoop() {
+            update();
+            draw();
+            animationFrameId = requestAnimationFrame(gameLoop);
         }
 
         // =================================================================
@@ -403,8 +603,7 @@
             // OYUN DİREKT BAŞLIYOR!
             startGame(); 
 
-            // Klavye/Fare/Dokunmatik olay dinleyicileri
-            // İlk etkileşimde ses bağlamını başlatma (handlePressStart'a eklendi)
+            // Olay dinleyicilerini kur
             window.addEventListener('keydown', handlePressStart);
             window.addEventListener('keyup', handlePressEnd);
 
