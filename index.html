@@ -81,7 +81,7 @@
             <span class="text-gray-500">REMOVE </span><span class="text-red-500">THE APP!</span>
         </div>
 
-        <div class="grid grid-cols-3 gap-4 mb-4 p-4 bg-gray-900/70 backdrop-blur-md rounded-2xl shadow-2xl border border-cyan-800/50 w-full max-w-lg mx-auto">
+        <div class="grid grid-cols-4 gap-4 mb-4 p-4 bg-gray-900/70 backdrop-blur-md rounded-2xl shadow-2xl border border-cyan-800/50 w-full max-w-lg mx-auto">
             <div class="text-sm font-medium text-center border-b border-gray-700/50 pb-1">
                 Score: <span id="score" class="text-yellow-300 font-extrabold text-xl font-mono">0</span>
             </div>
@@ -91,7 +91,16 @@
             <div class="text-sm font-medium text-center border-b border-gray-700/50 pb-1">
                 High: <span id="highScore" class="text-green-400 font-extrabold text-xl font-mono">0</span>
             </div>
-            <div id="statusMessage" class="col-span-3 text-sm font-medium text-center border-b border-gray-700/50 pb-1 text-cyan-400 transition duration-300">
+            <div class="text-sm font-medium text-center border-b border-gray-700/50 pb-1">
+                Orblets: <span id="orblets" class="text-yellow-300 font-extrabold text-xl font-mono">0</span>
+            </div>
+            <div class="col-span-4 text-sm font-medium text-center border-b border-gray-700/50 pb-1">
+                Juice:
+                <div class="w-full bg-gray-700 rounded-full h-2.5">
+                    <div id="powerupBar" class="bg-purple-500 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+            </div>
+            <div id="statusMessage" class="col-span-4 text-sm font-medium text-center border-b border-gray-700/50 pb-1 text-cyan-400 transition duration-300">
                 GET READY!
             </div>
         </div>
@@ -113,6 +122,8 @@
         const highScoreEl = document.getElementById('highScore');
         const statusMessageEl = document.getElementById('statusMessage');
         const canvasContainer = document.getElementById('canvasContainer'); 
+        const powerupBarEl = document.getElementById('powerupBar'); 
+        const orbletsEl = document.getElementById('orblets');
 
         // --- GAME SETTINGS ---
         const ORB_RADIUS = 15;
@@ -134,6 +145,9 @@
         const ZONE_AMPLITUDE = 150;
         const COMBO_COLOR_CYCLE = 200; 
         const TIME_TICK_MS = 1000; 
+        const MAX_ORBLETS = 30;
+        const ORBLET_ATTRACTION_RADIUS = 150;
+        const MAX_ORBLET_VELOCITY = 10; // New constant to limit orblet speed
 
         // --- GAME OBJECTS AND STATE ---
         let orb = { x: 0, y: 0, radius: ORB_RADIUS, velocityY: 0 };
@@ -145,6 +159,13 @@
         let animationFrameId;
         let comboFlashRadius1 = 0; 
         let comboFlashRadius2 = 0; 
+        let orblets = [];
+        let powerupProgress = 0;
+        const orbletsForPowerup = 10;
+        let isSuperOrbActive = false;
+        let superOrbTimer = 0;
+        let activeEvent = null;
+        let isOrbVacuumActive = false;
 
         // --- SCORING STATE ---
         let flowDurationMs = 0; 
@@ -153,6 +174,17 @@
         // --- LOKAL YÜKSEK SKOR (LocalStorage) ---
         let highScore = 0;
         const LOCAL_HIGH_SCORE_KEY = 'flowGameHighScore'; 
+        let totalOrblets = 0;
+        const LOCAL_ORBLETS_KEY = 'flowGameOrblets';
+        const LOCAL_SKIN_KEY = 'flowGameSkin';
+        let currentSkin = '#FFFFFF';
+
+        const skins = [
+            { name: 'Default', price: 0, color: '#FFFFFF' },
+            { name: 'Ruby', price: 100, color: '#FF0000' },
+            { name: 'Emerald', price: 150, color: '#00FF00' },
+            { name: 'Sapphire', price: 200, color: '#0000FF' },
+        ];
         
         // --- TONE.JS AUDIO OBJECTS ---
         let flowPad, missEffect, pressFeedback;
@@ -243,6 +275,112 @@
             }
         }
 
+        function loadTotalOrblets() {
+            try {
+                const storedOrblets = localStorage.getItem(LOCAL_ORBLETS_KEY);
+                totalOrblets = storedOrblets ? parseInt(storedOrblets, 10) : 0;
+            } catch (error) {
+                console.error("Local Orblets could not be loaded:", error);
+                totalOrblets = 0;
+            }
+            orbletsEl.textContent = totalOrblets.toLocaleString();
+        }
+
+        function saveTotalOrblets() {
+            try {
+                localStorage.setItem(LOCAL_ORBLETS_KEY, totalOrblets);
+            } catch (error) {
+                console.error("Local Orblets could not be saved:", error);
+            }
+        }
+
+        function populateSkinsMenu() {
+            const skinsContainer = document.getElementById('skinsContainer');
+            skinsContainer.innerHTML = '';
+            skins.forEach(skin => {
+                const skinEl = document.createElement('div');
+                skinEl.className = 'p-4 rounded-lg cursor-pointer';
+                skinEl.style.backgroundColor = skin.color;
+                skinEl.addEventListener('click', () => purchaseSkin(skin));
+                skinsContainer.appendChild(skinEl);
+            });
+        }
+
+        function purchaseSkin(skin) {
+            if (totalOrblets >= skin.price) {
+                totalOrblets -= skin.price;
+                currentSkin = skin.color;
+                saveTotalOrblets();
+                localStorage.setItem(LOCAL_SKIN_KEY, currentSkin);
+                orbletsEl.textContent = totalOrblets.toLocaleString();
+                document.getElementById('closeSkinsMenu').click();
+            } else {
+                alert("You don't have enough orblets to buy this skin!");
+            }
+        }
+
+        function loadSkin() {
+            const savedSkin = localStorage.getItem(LOCAL_SKIN_KEY);
+            if (savedSkin) {
+                currentSkin = savedSkin;
+            }
+        }
+        function spawnOrblet(force = false, isShower = false) {
+            if (orblets.length >= MAX_ORBLETS) return;
+
+            // Sporadic shower check - SADECE normal spawn'da kontrol et
+            if (!force && !isShower && Math.random() < 0.1) { 
+                startOrbletShower();
+                return; // Shower başlattıktan sonra return et
+            }
+
+            const ORBLET_RADIUS = 5;
+            let orblet = {
+                x: Math.random() * (canvas.width - ORBLET_RADIUS * 2) + ORBLET_RADIUS,
+                y: isShower ? -ORBLET_RADIUS : Math.random() * (canvas.height - ORBLET_RADIUS * 2) + ORBLET_RADIUS,
+                radius: ORBLET_RADIUS,
+                velocityX: 0,
+                velocityY: isShower ? 2 + Math.random() * 3 : 0
+            };
+            orblets.push(orblet);
+        }
+
+        function startOrbletShower() {
+            // Shower için orblet sayısını sınırla
+            const showerCount = Math.min(15, MAX_ORBLETS - orblets.length);
+            
+            for (let i = 0; i < showerCount; i++) {
+                const ORBLET_RADIUS = 5;
+                // Doğrudan oluştur, spawnOrblet'i çağırma (sonsuz döngü önlenir)
+                let orblet = {
+                    x: Math.random() * (canvas.width - ORBLET_RADIUS * 2) + ORBLET_RADIUS,
+                    y: -ORBLET_RADIUS - (i * 10), // Her birini biraz daha yukarıdan başlat
+                    radius: ORBLET_RADIUS,
+                    velocityX: (Math.random() - 0.5) * 2, // Hafif yatay hareket
+                    velocityY: 2 + Math.random() * 3
+                };
+                orblets.push(orblet);
+            }
+        }
+
+        function startOrbletShower() {
+            // Shower için orblet sayısını sınırla
+            const showerCount = Math.min(15, MAX_ORBLETS - orblets.length);
+            
+            for (let i = 0; i < showerCount; i++) {
+                const ORBLET_RADIUS = 5;
+                // Doğrudan oluştur, spawnOrblet'i çağırma (sonsuz döngü önlenir)
+                let orblet = {
+                    x: Math.random() * (canvas.width - ORBLET_RADIUS * 2) + ORBLET_RADIUS,
+                    y: -ORBLET_RADIUS - (i * 10), // Her birini biraz daha yukarıdan başlat
+                    radius: ORBLET_RADIUS,
+                    velocityX: (Math.random() - 0.5) * 2, // Hafif yatay hareket
+                    velocityY: 2 + Math.random() * 3
+                };
+                orblets.push(orblet);
+            }
+        }
+
         // =================================================================
         //                 PROPORTIONAL INPUT LOGIC
         // =================================================================
@@ -250,7 +388,7 @@
         function handlePressStart(e) {
              if (!animationFrameId) return; 
             if (isPressing) return;
-            
+
             // Eğer AudioContext başlamadıysa, ilk tıklamayı ses bağlamını başlatmak için kullan
             if (Tone.context.state !== 'running' && isAudioReady) {
                 startAudioContext();
@@ -274,6 +412,10 @@
                         (pressDuration - MIN_DURATION_MS) / (MAX_DURATION_MS - MIN_DURATION_MS)
                     )
                 );
+
+                if (activeEvent === 'inversion') {
+                    durationFactor = 1 - durationFactor;
+                }
 
                 const liftForce = MIN_LIFT + durationFactor * (MAX_LIFT - MIN_LIFT);
 
@@ -338,6 +480,7 @@
                 statusMessageEl.textContent = 'CATCH THE RHYTHM!';
                 statusMessageEl.classList.remove('text-gray-400');
                 statusMessageEl.classList.add('text-cyan-400');
+                setInterval(spawnOrblet, 3000);
             }
         }
 
@@ -346,8 +489,23 @@
             const deltaTime = currentTimestamp - lastTimestamp;
             lastTimestamp = currentTimestamp;
 
+            // Handle Super Orb Timer
+            if (isSuperOrbActive) {
+                superOrbTimer -= deltaTime;
+                if (superOrbTimer <= 0) {
+                    isSuperOrbActive = false;
+                    orb.radius = ORB_RADIUS; // Reset orb size
+                    statusMessageEl.textContent = 'GET READY!';
+                    statusMessageEl.classList.remove('text-yellow-400');
+                }
+            }
+
             // 1. Orb Physics
-            orb.velocityY += GRAVITY;
+            let currentGravity = GRAVITY;
+            if (activeEvent === 'slowMo') {
+                currentGravity /= 2;
+            }
+            orb.velocityY += currentGravity;
             orb.y += orb.velocityY;
 
             // 2. Screen Boundaries
@@ -361,7 +519,11 @@
             }
 
             // 3. Flow Zone Movement
-            flowZone.time += flowZone.speed;
+            let currentSpeed = flowZone.speed;
+            if (activeEvent === 'slowMo') {
+                currentSpeed /= 2;
+            }
+            flowZone.time += currentSpeed;
             const zoneCenter = (canvas.height / 2) + (Math.sin(flowZone.time) * ZONE_AMPLITUDE);
             flowZone.y = zoneCenter - (flowZone.height / 2); 
             
@@ -373,6 +535,81 @@
             const bottomOfOrb = orb.y + orb.radius;
             const topOfZone = flowZone.y;
             const bottomOfZone = flowZone.y + flowZone.height;
+
+            // 5. Orblet Physics, Attraction, and Collection (Consolidated Loop)
+            for (let i = orblets.length - 1; i >= 0; i--) {
+                const orblet = orblets[i];
+
+                // Apply attraction force if active
+                if (isSuperOrbActive || isOrbVacuumActive) {
+                    const distanceX = orb.x - orblet.x;
+                    const distanceY = orb.y - orblet.y;
+                    const distance = Math.hypot(distanceX, distanceY);
+
+                    if (distance > 1 && distance < ORBLET_ATTRACTION_RADIUS) {
+                        const normalizedX = distanceX / distance;
+                        const normalizedY = distanceY / distance;
+                        // Attraction strength that slightly decays with distance
+                        const attractionStrength = 0.2 * (1 - (distance / ORBLET_ATTRACTION_RADIUS) * 0.8); 
+
+                        orblet.velocityX += normalizedX * attractionStrength;
+                        orblet.velocityY += normalizedY * attractionStrength;
+                    }
+                }
+
+                // Update orblet position
+                orblet.x += orblet.velocityX;
+                orblet.y += orblet.velocityY;
+
+                // Apply friction
+                orblet.velocityX *= 0.95;
+                orblet.velocityY *= 0.95;
+
+                // Cap orblet velocity
+                orblet.velocityX = Math.max(-MAX_ORBLET_VELOCITY, Math.min(orblet.velocityX, MAX_ORBLET_VELOCITY));
+                orblet.velocityY = Math.max(-MAX_ORBLET_VELOCITY, Math.min(orblet.velocityY, MAX_ORBLET_VELOCITY));
+
+                // Despawn logic
+                if (orblet.y > canvas.height + orblet.radius || 
+                    orblet.y < -orblet.radius ||
+                    orblet.x > canvas.width + orblet.radius ||
+                    orblet.x < -orblet.radius) {
+                    orblets.splice(i, 1);
+                    continue; // Skip collision check for despawned orblet
+                }
+
+                // Collision detection and collection
+                const distanceToOrb = Math.hypot(orb.x - orblet.x, orb.y - orblet.y);
+                if (distanceToOrb < orb.radius + orblet.radius) {
+                    orblets.splice(i, 1);
+                    score += 100;
+                    totalOrblets++;
+                    orbletsEl.textContent = totalOrblets.toLocaleString();
+                    saveTotalOrblets();
+                    if (isAudioReady && Tone.context.state === 'running') {
+                        pressFeedback.triggerAttackRelease("C7", "32n");
+                    }
+
+                    powerupProgress++;
+                    const powerupPercentage = (powerupProgress / orbletsForPowerup) * 100;
+                    powerupBarEl.style.width = `${powerupPercentage}%`;
+
+                    if (powerupProgress >= orbletsForPowerup) {
+                        if (isSuperOrbActive) {
+                            superOrbTimer += 3000; // Extend duration by 3 seconds
+                            statusMessageEl.textContent = 'SUPER ORB EXTENDED!';
+                            statusMessageEl.classList.add('text-yellow-400');
+                        } else {
+                            isSuperOrbActive = true;
+                            superOrbTimer = 5000; // Initial 5 seconds
+                            statusMessageEl.textContent = 'SUPER ORB ACTIVATED!';
+                            statusMessageEl.classList.add('text-yellow-400');
+                        }
+                        powerupProgress = 0;
+                        powerupBarEl.style.width = '0%';
+                    }
+                }
+            }
 
             const oldMultiplier = scoreMultiplier;
             const oldCombo = combo;
@@ -397,10 +634,47 @@
                 
                 scoreMultiplier = 1 + (secondsInFlow * 2);
 
+                if (activeEvent === 'narrowZone') {
+                    scoreMultiplier *= 2;
+                }
+
                 score += scoreMultiplier * (deltaTime / 16.66); 
                 
                 combo++;
                 
+                if (combo === 100 && activeEvent === null) {
+                    activeEvent = 'slowMo';
+                    statusMessageEl.textContent = 'SLOW MO!';
+                    statusMessageEl.classList.add('text-blue-400');
+                    setTimeout(() => {
+                        activeEvent = null;
+                        statusMessageEl.textContent = 'GET READY!';
+                        statusMessageEl.classList.remove('text-blue-400');
+                    }, 5000);
+                }
+
+                if (combo === 250 && activeEvent === null) {
+                    activeEvent = 'narrowZone';
+                    statusMessageEl.textContent = 'NARROW ZONE!';
+                    statusMessageEl.classList.add('text-orange-400');
+                    setTimeout(() => {
+                        activeEvent = null;
+                        statusMessageEl.textContent = 'GET READY!';
+                        statusMessageEl.classList.remove('text-orange-400');
+                    }, 15000);
+                }
+
+                if (combo === 300 && activeEvent === null) {
+                    activeEvent = 'inversion';
+                    statusMessageEl.textContent = 'INVERSION!';
+                    statusMessageEl.classList.add('text-yellow-400');
+                    setTimeout(() => {
+                        activeEvent = null;
+                        statusMessageEl.textContent = 'GET READY!';
+                        statusMessageEl.classList.remove('text-yellow-400');
+                    }, 10000);
+                }
+
                 if (scoreMultiplier > oldMultiplier && isAudioReady && Tone.context.state === 'running') {
                     missEffect.triggerAttackRelease("E5", "16n", Tone.now(), 0.5); 
                 }
@@ -411,11 +685,18 @@
                     if (isAudioReady && Tone.context.state === 'running') {
                         flowPad.triggerAttackRelease("A5", "16n"); 
                     }
+                    isOrbVacuumActive = true;
+                    setTimeout(() => {
+                        isOrbVacuumActive = false;
+                    }, 3000);
                 }
                 
                 // Dynamic Difficulty
                 flowZone.speed = Math.min(MAX_ZONE_SPEED, BASE_ZONE_SPEED + (combo * 0.0001));
                 flowZone.height = Math.max(MIN_ZONE_HEIGHT, BASE_ZONE_HEIGHT - (combo * 0.05));
+                if (activeEvent === 'narrowZone') {
+                    flowZone.height /= 2;
+                }
                 
                 // Dynamic Color Cycling & Pitch Modulation
                 const baseHue = 180; 
@@ -549,20 +830,49 @@
             ctx.strokeRect(0, flowZone.y, canvas.width, flowZone.height);
             ctx.lineWidth = 1; 
 
-            // 3. Draw Orb 
-            const orbColor = isFlowing ? `hsl(${flowHue}, 100%, 75%)` : '#FFFFFF';
+            // 3. Draw Orblets
+            ctx.fillStyle = 'rgba(255, 255, 0, 0.8)';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = 'rgba(255, 255, 0, 0.8)';
+            orblets.forEach(orblet => {
+                ctx.beginPath();
+                ctx.arc(orblet.x, orblet.y, orblet.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.shadowBlur = 0;
+
+            // 4. Draw Orb 
+            const orbColor = isFlowing ? `hsl(${flowHue}, 100%, 75%)` : currentSkin;
             const orbGlowColor = isFlowing ? `hsla(${flowHue}, 100%, 70%, 1)` : 'rgba(255, 255, 255, 0.5)';
             
-            ctx.shadowBlur = isFlowing ? 25 : 8;
-            ctx.shadowColor = orbGlowColor;
+            if (isSuperOrbActive) {
+                const pulse = Math.sin(performance.now() / 100) * 5;
+                orb.radius = ORB_RADIUS * 1.5 + pulse;
+                ctx.shadowBlur = 35;
+                ctx.shadowColor = 'rgba(255, 255, 0, 1)';
+            } else {
+                orb.radius = ORB_RADIUS;
+                ctx.shadowBlur = isFlowing ? 25 : 8;
+                ctx.shadowColor = orbGlowColor;
+            }
             
             ctx.beginPath();
             ctx.arc(orb.x, orb.y, orb.radius, 0, Math.PI * 2);
-            ctx.fillStyle = orbColor;
+            ctx.fillStyle = isSuperOrbActive ? 'rgba(255, 255, 0, 1)' : orbColor;
             ctx.fill();
             ctx.shadowBlur = 0; 
             ctx.closePath();
             
+            if (isOrbVacuumActive) {
+                const auraRadius = orb.radius + 15 + Math.sin(performance.now() / 100) * 5;
+                ctx.beginPath();
+                ctx.arc(orb.x, orb.y, auraRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${flowHue}, 100%, 75%, 0.5)`;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.closePath();
+            }
+
             if (isFlowing) {
                  ctx.beginPath();
                  ctx.arc(orb.x, orb.y, orb.radius * 0.6, 0, Math.PI * 2);
@@ -597,6 +907,9 @@
 
         window.onload = function() {
             loadHighScore(); 
+            loadTotalOrblets();
+            loadSkin();
+            populateSkinsMenu();
             setupAudio();
             resizeCanvas();
             
@@ -614,8 +927,28 @@
             window.addEventListener('touchend', handlePressEnd);
 
             window.addEventListener('resize', resizeCanvas);
+
+            document.getElementById('orblets').addEventListener('click', () => {
+                document.getElementById('skinsMenu').classList.remove('hidden');
+            });
+
+            document.getElementById('closeSkinsMenu').addEventListener('click', () => {
+                document.getElementById('skinsMenu').classList.add('hidden');
+            });
         };
 
     </script>
+
+    <div id="skinsMenu" class="hidden absolute top-0 left-0 w-full h-full bg-black bg-opacity-50 flex items-center justify-center">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-lg text-white">
+            <h2 class="text-2xl font-bold mb-4">Unlock New Orb Skins</h2>
+            <div id="skinsContainer" class="grid grid-cols-3 gap-4">
+                <!-- Skins will be dynamically added here -->
+            </div>
+            <button id="closeSkinsMenu" class="mt-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded">
+                Close
+            </button>
+        </div>
+    </div>
 </body>
 </html>
