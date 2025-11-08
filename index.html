@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Remove the app! (Instant Play)</title>
+    <title>Remove the app! (Enhanced Edition)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tone@14.7.58/build/Tone.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <style>
         /* CSS Variables for Dynamic Background Control */
         :root {
@@ -14,31 +14,27 @@
             --bg-lightness: 8%;
         }
         
-        /* 1. Body tam ekranı kaplamalı */
         body {
             width: 100vw; 
             height: 100vh;
             margin: 0;
             padding: 0;
-            
-            /* HSL used for dynamic hue cycling */
             background: radial-gradient(circle at center, 
                 hsl(var(--bg-hue), var(--bg-saturation), 10%) 0%, 
                 #000000 100%);
             transition: background 0.5s ease-out; 
             font-family: 'Inter', sans-serif;
-            touch-action: manipulation; /* Mobil gecikmeleri engeller */
+            touch-action: manipulation;
         }
 
-        /* 2. Ana düzenleyici (main-content) yüksekliği yönetmeli */
         .main-content {
              display: flex;
              flex-direction: column;
-             height: 100%; /* Body'nin 100vh'ini kullan */
+             height: 100%;
              width: 100%;
-             padding-top: 1rem; /* pt-4 */
-             padding-bottom: 1rem; /* pb-4 */
-             box-sizing: border-box; /* Padding dahil boyutu hesapla */
+             padding-top: 1rem;
+             padding-bottom: 1rem;
+             box-sizing: border-box;
         }
 
         #gameCanvas {
@@ -57,6 +53,44 @@
              align-items: center;
              justify-content: center;
              width: 100%;
+        }
+
+        @keyframes multiplier-pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .multiplier-animate {
+            animation: multiplier-pulse 0.3s ease-out forwards;
+        }
+
+        @keyframes particle-float {
+            0% { transform: translate(0, 0) scale(1); opacity: 1; }
+            100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+        }
+
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            animation: particle-float 1s ease-out forwards;
+        }
+
+        @keyframes screen-shake {
+            0%, 100% { transform: translate(0, 0); }
+            10% { transform: translate(-5px, 2px); }
+            20% { transform: translate(5px, -2px); }
+            30% { transform: translate(-3px, 3px); }
+            40% { transform: translate(3px, -3px); }
+            50% { transform: translate(-2px, 2px); }
+            60% { transform: translate(2px, -2px); }
+            70% { transform: translate(-1px, 1px); }
+            80% { transform: translate(1px, -1px); }
+            90% { transform: translate(-0.5px, 0.5px); }
+        }
+
+        .shake {
+            animation: screen-shake 0.5s ease-in-out;
         }
     </style>
     <script>
@@ -94,44 +128,60 @@
             <div class="text-sm font-medium text-center border-b border-gray-700/50 pb-1">
                 Orblets: <span id="orblets" class="text-yellow-300 font-extrabold text-xl font-mono">0</span>
             </div>
+            <div class="text-sm font-medium text-center border-b border-gray-700/50 pb-1">
+                Shields: <span id="shields" class="text-purple-300 font-extrabold text-xl font-mono">0</span>
+            </div>
+            <div class="text-sm font-medium text-center border-b border-gray-700/50 pb-1">
+                Streak: <span id="perfectStreak" class="text-cyan-300 font-extrabold text-xl font-mono">0</span>
+            </div>
+            <div class="text-sm font-medium text-center border-b border-gray-700/50 pb-1 col-span-2">
+                <button id="upgradesButton" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded text-xs">
+                    Upgrades
+                </button>
+                <button id="questsButton" class="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded text-xs ml-2">
+                    Quests
+                </button>
+            </div>
             <div class="col-span-4 text-sm font-medium text-center border-b border-gray-700/50 pb-1">
                 Juice:
                 <div class="w-full bg-gray-700 rounded-full h-2.5">
-                    <div id="powerupBar" class="bg-purple-500 h-2.5 rounded-full" style="width: 0%"></div>
+                    <div id="powerupBar" class="bg-purple-500 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
                 </div>
             </div>
             <div id="statusMessage" class="col-span-4 text-sm font-medium text-center border-b border-gray-700/50 pb-1 text-cyan-400 transition duration-300">
                 GET READY!
             </div>
+            <div id="modifierDisplay" class="col-span-4 text-xs text-center text-purple-400 font-bold hidden">
+                <!-- Active modifiers will appear here -->
+            </div>
         </div>
         
-        <div id="canvasContainer" class="full-screen-container">
+        <div id="canvasContainer" class="full-screen-container relative">
             <canvas id="gameCanvas" class="rounded-xl"></canvas>
+            <div id="particleContainer" class="absolute inset-0 pointer-events-none"></div>
         </div>
 
-        <div class="mt-4 text-sm text-gray-500 mx-auto">
-            <span class="font-bold text-yellow-400">Tip:</span> Jump power is proportional to your press duration.
+        <div class="mt-4 text-sm text-gray-500 mx-auto text-center">
+            <span class="font-bold text-yellow-400">Tip:</span> <span id="tipText">Jump power is proportional to your press duration.</span>
         </div>
         
-    </div> <script>
-        // --- DOM ELEMENTS ---
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const scoreEl = document.getElementById('score');
-        const multiplierEl = document.getElementById('multiplier'); 
-        const highScoreEl = document.getElementById('highScore');
-        const statusMessageEl = document.getElementById('statusMessage');
-        const canvasContainer = document.getElementById('canvasContainer'); 
-        const powerupBarEl = document.getElementById('powerupBar'); 
-        const orbletsEl = document.getElementById('orblets');
+    </div>
+
+    <script>
+        // --- DOM ELEMENTS (will be initialized in window.onload) ---
+        let canvas, ctx, scoreEl, multiplierEl, highScoreEl, statusMessageEl, canvasContainer;
+        let powerupBarEl, orbletsEl, shieldsEl, questsButton, questsMenu, closeQuestsMenu;
+        let activeQuestsContainer, completedQuestsContainer, particleContainer, modifierDisplay;
+        let perfectStreakEl, tipTextEl;
 
         // --- GAME SETTINGS ---
         const ORB_RADIUS = 15;
-        const GRAVITY = 0.4;
+        const BASE_GRAVITY = 0.4;
+        let currentGravityMultiplier = 1;
         
         // --- PROPORTIONAL INPUT SETTINGS ---
-        const MIN_LIFT = -3;   
-        const MAX_LIFT = -13;  
+        const MIN_LIFT = -3;   
+        const MAX_LIFT = -13;  
         const MIN_DURATION_MS = 30; 
         const MAX_DURATION_MS = 200; 
         let pressStartTime = 0; 
@@ -143,59 +193,249 @@
         const BASE_ZONE_SPEED = 0.03;
         const MAX_ZONE_SPEED = 0.08; 
         const ZONE_AMPLITUDE = 150;
+        const MINI_FLOW_ZONE_HEIGHT_FACTOR = 0.3;
         const COMBO_COLOR_CYCLE = 200; 
         const TIME_TICK_MS = 1000; 
         const MAX_ORBLETS = 30;
         const ORBLET_ATTRACTION_RADIUS = 150;
-        const MAX_ORBLET_VELOCITY = 10; // New constant to limit orblet speed
+        const MAX_ORBLET_VELOCITY = 10;
+
+        // --- PARTICLE SYSTEM ---
+        const MAX_PARTICLES = 30; // Reduced from 50
+        let particles = [];
+
+        // --- RUN MODIFIERS ---
+        const runModifiers = [
+            { 
+                id: 'speedDemon', 
+                name: 'Speed Demon', 
+                description: '2x flow zone speed, 3x points',
+                apply: () => { flowZone.speed *= 2; scoreMultiplierBonus = 3; },
+                color: '#FF4444'
+            },
+            { 
+                id: 'orbletStorm', 
+                name: 'Orblet Storm', 
+                description: '5x orblet spawn rate',
+                apply: () => { orbletSpawnMultiplier = 5; },
+                color: '#FFFF44'
+            },
+            { 
+                id: 'gravityFlux', 
+                name: 'Gravity Flux', 
+                description: 'Gravity changes every 15 seconds',
+                apply: () => { activeEvent = 'gravityFlux'; },
+                color: '#44FF44'
+            },
+            { 
+                id: 'perfectionist', 
+                name: 'Perfectionist', 
+                description: 'Only mini-flow zone counts, 5x multiplier',
+                apply: () => { perfectionistMode = true; scoreMultiplierBonus = 5; },
+                color: '#FF44FF'
+            }
+        ];
+
+        let activeModifiers = [];
+        let scoreMultiplierBonus = 1;
+        let orbletSpawnMultiplier = 1;
+        let perfectionistMode = false;
+        let gravityFluxTimer = 0;
 
         // --- GAME OBJECTS AND STATE ---
         let orb = { x: 0, y: 0, radius: ORB_RADIUS, velocityY: 0 };
         let flowZone = { y: 0, height: BASE_ZONE_HEIGHT, speed: BASE_ZONE_SPEED, time: 0 };
         let score = 0;
         let combo = 0;
+        let perfectStreak = 0;
+        let maxPerfectStreak = 0;
         let isInFlow = false;
+        let isInMiniFlow = false;
         let isAudioReady = false;
         let animationFrameId;
         let comboFlashRadius1 = 0; 
         let comboFlashRadius2 = 0; 
+        let multiplierFlashRadius1 = 0;
+        let multiplierFlashRadius2 = 0;
         let orblets = [];
         let powerupProgress = 0;
         const orbletsForPowerup = 10;
         let isSuperOrbActive = false;
         let superOrbTimer = 0;
+        let superOrbDurationBonus = 0;
+        let orbletAttractionBonus = 0;
+        let errorMarginShields = 0;
+        let isShieldActive = false;
+        let shieldTimer = 0;
         let activeEvent = null;
         let isOrbVacuumActive = false;
+        let hasPrecisionTarget = false;
+        let activeQuests = [];
+        let completedQuests = [];
+        let questProgress = {};
 
         // --- SCORING STATE ---
         let flowDurationMs = 0; 
         let scoreMultiplier = 1;
+        let miniFlowMultiplier = 1;
 
-        // --- LOKAL YÜKSEK SKOR (LocalStorage) ---
+        // --- ACHIEVEMENTS ---
+        let achievements = [];
+        const achievementsList = [
+            { id: 'zenMaster', name: 'Zen Master', description: '60s perfect zone streak', check: () => perfectStreak >= 60 },
+            { id: 'orbletHunter', name: 'Orblet Hunter', description: '100 orblets in one run', collected: 0, target: 100 },
+            { id: 'untouchable', name: 'Untouchable', description: '100 combo without shield', check: () => combo >= 100 && !isShieldActive },
+            { id: 'speedDemon', name: 'Speed Demon', description: 'Reach 200 combo', check: () => combo >= 200 }
+        ];
+
+        // --- LOCAL STORAGE ---
         let highScore = 0;
         const LOCAL_HIGH_SCORE_KEY = 'flowGameHighScore'; 
         let totalOrblets = 0;
         const LOCAL_ORBLETS_KEY = 'flowGameOrblets';
         const LOCAL_SKIN_KEY = 'flowGameSkin';
         let currentSkin = '#FFFFFF';
+        const LOCAL_UPGRADES_KEY = 'flowGameUpgrades';
+        let purchasedUpgrades = {};
 
         const skins = [
             { name: 'Default', price: 0, color: '#FFFFFF' },
             { name: 'Ruby', price: 100, color: '#FF0000' },
             { name: 'Emerald', price: 150, color: '#00FF00' },
             { name: 'Sapphire', price: 200, color: '#0000FF' },
+            { name: 'Gold', price: 250, color: '#FFD700' },
+            { name: 'Purple Haze', price: 300, color: '#9400D3' },
+        ];
+
+        const upgrades = [
+            { 
+                id: 'superOrbDuration', 
+                name: 'Super Orb Duration', 
+                description: 'Increases Super Orb duration by 3 seconds.', 
+                price: 200, 
+                effect: { type: 'superOrbTimer', value: 3000 }
+            },
+            {
+                id: 'orbletAttraction',
+                name: 'Orblet Attraction',
+                description: 'Increases orblet attraction radius by 50%.',
+                price: 300,
+                effect: { type: 'orbletAttractionRadius', value: 0.5 }
+            },
+            {
+                id: 'errorMarginShield',
+                name: 'Error Margin Shield',
+                description: 'Preserves combo for a short time when missing the band (single use).',
+                price: 500,
+                effect: { type: 'errorMarginShield', value: 1 }
+            },
+        ];
+
+        const quests = [
+            {
+                id: 'maintain10xMultiplier5s',
+                description: 'Maintain 10x multiplier for 5 seconds',
+                type: 'maintainMultiplierDuration',
+                target: { multiplier: 10, duration: 5000 },
+                reward: { orblets: 100 }
+            },
+            {
+                id: 'collect50OrbletsSuperOrb',
+                description: 'Collect 50 Orblets while Super Orb is active',
+                type: 'collectOrbletsWhileSuperOrb',
+                target: { orblets: 50 },
+                reward: { orblets: 150 }
+            },
+            {
+                id: 'reach50Combo',
+                description: 'Reach a combo of 50',
+                type: 'reachCombo',
+                target: { combo: 50 },
+                reward: { orblets: 50 }
+            }
         ];
         
         // --- TONE.JS AUDIO OBJECTS ---
         let flowPad, missEffect, pressFeedback;
+        let drumSynth, bassSynth;
         let currentFlowNote = 'C4'; 
 
-        // --- Timing Variables for accurate scoring ---
+        // --- Timing Variables ---
         let lastTimestamp = performance.now();
+        let drumBeatTimer = 0;
+        let bassLineTimer = 0;
 
+        // --- TIPS ---
+        const tips = [
+            "Jump power is proportional to your press duration.",
+            "Stay in the cyan mini-zone for 3x multiplier!",
+            "Collect 10 orblets to activate Super Orb mode.",
+            "Combo 50 activates a 3-second Orblet Vacuum!",
+            "Purple orblets are precision targets - worth full powerup!",
+            "Shields save your combo once - use them wisely!",
+            "Higher combos = faster flow zone = more challenge!"
+        ];
 
         // =================================================================
-        //                 AUDIO (TONE.JS) INTEGRATION
+        //                 PARTICLE SYSTEM
+        // =================================================================
+
+        function createParticle(x, y, color, size = 5) {
+            if (particles.length >= MAX_PARTICLES) return;
+            
+            const particle = document.createElement('div');
+            particle.className = 'particle';
+            particle.style.left = x + 'px';
+            particle.style.top = y + 'px';
+            particle.style.width = size + 'px';
+            particle.style.height = size + 'px';
+            particle.style.backgroundColor = color;
+            particle.style.borderRadius = '50%';
+            
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 50 + Math.random() * 50;
+            particle.style.setProperty('--tx', Math.cos(angle) * distance + 'px');
+            particle.style.setProperty('--ty', Math.sin(angle) * distance + 'px');
+            
+            particleContainer.appendChild(particle);
+            particles.push(particle);
+            
+            setTimeout(() => {
+                particle.remove();
+                particles = particles.filter(p => p !== particle);
+            }, 1000);
+        }
+
+        function createBurstParticles(x, y, count, color) {
+            const actualCount = Math.min(count, MAX_PARTICLES - particles.length);
+            for (let i = 0; i < actualCount; i++) {
+                setTimeout(() => createParticle(x, y, color, 3 + Math.random() * 5), i * 30);
+            }
+        }
+
+        // =================================================================
+        //                 RUN MODIFIER SYSTEM
+        // =================================================================
+
+        function selectRandomModifiers() {
+            activeModifiers = [];
+            const numModifiers = Math.random() < 0.3 ? 2 : 1; // 30% chance for 2 modifiers
+            
+            const shuffled = [...runModifiers].sort(() => Math.random() - 0.5);
+            activeModifiers = shuffled.slice(0, numModifiers);
+            
+            activeModifiers.forEach(mod => mod.apply());
+            
+            if (activeModifiers.length > 0) {
+                modifierDisplay.classList.remove('hidden');
+                modifierDisplay.innerHTML = activeModifiers.map(m => 
+                    `<span style="color: ${m.color}">${m.name}</span>`
+                ).join(' + ');
+            }
+        }
+
+        // =================================================================
+        //                 AUDIO (TONE.JS) INTEGRATION
         // =================================================================
 
         function setupAudio() {
@@ -223,6 +463,19 @@
                 volume: 0, 
             }).toDestination();
 
+            drumSynth = new Tone.MembraneSynth({
+                pitchDecay: 0.02,
+                octaves: 8,
+                envelope: { attack: 0.001, decay: 0.8, sustain: 0.01, release: 0.4 },
+                volume: -20
+            }).toDestination();
+
+            bassSynth = new Tone.Synth({
+                oscillator: { type: 'sine' },
+                envelope: { attack: 0.1, decay: 0.3, sustain: 0.7, release: 0.8 },
+                volume: -18
+            }).toDestination();
+
             isAudioReady = true;
         }
 
@@ -231,14 +484,13 @@
                 try {
                     await Tone.start();
                 } catch (e) {
-                    // Mobil kısıtlamalar nedeniyle hata verebilir, ama oyunu durdurmaz.
-                    console.warn("AudioContext could not start automatically. User interaction needed on mobile.", e);
+                    console.warn("AudioContext could not start automatically.", e);
                 }
             }
         }
 
         // =================================================================
-        //                 LOKAL SKOR KAYIT/YÜKLEME (LocalStorage)
+        //                 LOCAL STORAGE FUNCTIONS
         // =================================================================
 
         function loadHighScore() {
@@ -273,6 +525,7 @@
             if (score > highScore) {
                 saveHighScore(score);
             }
+            saveQuestsState();
         }
 
         function loadTotalOrblets() {
@@ -294,13 +547,58 @@
             }
         }
 
+        const LOCAL_QUESTS_ACTIVE_KEY = 'flowGameActiveQuests';
+        const LOCAL_QUESTS_COMPLETED_KEY = 'flowGameCompletedQuests';
+        const LOCAL_QUESTS_PROGRESS_KEY = 'flowGameQuestProgress';
+
+        function loadQuestsState() {
+            try {
+                const storedActive = localStorage.getItem(LOCAL_QUESTS_ACTIVE_KEY);
+                activeQuests = storedActive ? JSON.parse(storedActive) : [];
+
+                const storedCompleted = localStorage.getItem(LOCAL_QUESTS_COMPLETED_KEY);
+                completedQuests = storedCompleted ? JSON.parse(storedCompleted) : [];
+
+                const storedProgress = localStorage.getItem(LOCAL_QUESTS_PROGRESS_KEY);
+                questProgress = storedProgress ? JSON.parse(storedProgress) : {};
+            } catch (error) {
+                console.error("Local quest state could not be loaded:", error);
+                activeQuests = [];
+                completedQuests = [];
+                questProgress = {};
+            }
+        }
+
+        function saveQuestsState() {
+            try {
+                localStorage.setItem(LOCAL_QUESTS_ACTIVE_KEY, JSON.stringify(activeQuests));
+                localStorage.setItem(LOCAL_QUESTS_COMPLETED_KEY, JSON.stringify(completedQuests));
+                localStorage.setItem(LOCAL_QUESTS_PROGRESS_KEY, JSON.stringify(questProgress));
+            } catch (error) {
+                console.error("Local quest state could not be saved:", error);
+            }
+        }
+
         function populateSkinsMenu() {
             const skinsContainer = document.getElementById('skinsContainer');
             skinsContainer.innerHTML = '';
             skins.forEach(skin => {
                 const skinEl = document.createElement('div');
-                skinEl.className = 'p-4 rounded-lg cursor-pointer';
+                skinEl.className = 'p-4 rounded-lg cursor-pointer transition-transform hover:scale-110';
                 skinEl.style.backgroundColor = skin.color;
+                
+                const nameEl = document.createElement('p');
+                nameEl.className = 'text-xs text-center mt-2 text-white font-bold';
+                nameEl.textContent = skin.name;
+                nameEl.style.textShadow = '0 0 5px black';
+                
+                const priceEl = document.createElement('p');
+                priceEl.className = 'text-xs text-center text-yellow-400 font-bold';
+                priceEl.textContent = skin.price === 0 ? 'FREE' : `${skin.price} Orblets`;
+                priceEl.style.textShadow = '0 0 5px black';
+                
+                skinEl.appendChild(nameEl);
+                skinEl.appendChild(priceEl);
                 skinEl.addEventListener('click', () => purchaseSkin(skin));
                 skinsContainer.appendChild(skinEl);
             });
@@ -319,19 +617,100 @@
             }
         }
 
+        function populateUpgradesMenu() {
+            const upgradesContainer = document.getElementById('upgradesContainer');
+            upgradesContainer.innerHTML = '';
+
+            upgrades.forEach(upgrade => {
+                const upgradeEl = document.createElement('div');
+                upgradeEl.className = 'p-4 rounded-lg bg-gray-700 shadow-md flex flex-col';
+
+                const isPurchased = purchasedUpgrades[upgrade.id];
+                const canAfford = totalOrblets >= upgrade.price;
+
+                upgradeEl.innerHTML = `
+                    <h3 class="text-xl font-bold text-cyan-300">${upgrade.name}</h3>
+                    <p class="text-gray-300 text-sm mb-2">${upgrade.description}</p>
+                    <div class="flex justify-between items-center mt-auto pt-2 border-t border-gray-600">
+                        <span class="text-yellow-400 font-bold">${upgrade.price} Orblets</span>
+                        <button id="buy-${upgrade.id}" class="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm
+                            ${isPurchased ? 'opacity-50 cursor-not-allowed' : ''}
+                            ${!canAfford && !isPurchased ? 'bg-gray-500 hover:bg-gray-500 cursor-not-allowed' : ''}"
+                            ${isPurchased || !canAfford ? 'disabled' : ''}>
+                            ${isPurchased ? 'Purchased' : 'Buy'}
+                        </button>
+                    </div>
+                `;
+                upgradesContainer.appendChild(upgradeEl);
+
+                const buyButton = document.getElementById(`buy-${upgrade.id}`);
+                if (buyButton && !isPurchased && canAfford) {
+                    buyButton.addEventListener('click', () => purchaseUpgrade(upgrade));
+                }
+            });
+        }
+
+        function purchaseUpgrade(upgrade) {
+            if (totalOrblets >= upgrade.price) {
+                totalOrblets -= upgrade.price;
+                purchasedUpgrades[upgrade.id] = true;
+                saveTotalOrblets();
+                saveUpgrades();
+                orbletsEl.textContent = totalOrblets.toLocaleString();
+                
+                applyUpgradeEffect(upgrade);
+                populateUpgradesMenu();
+            } else {
+                alert("You don't have enough orblets to buy this upgrade!");
+            }
+        }
+
+        function applyUpgradeEffect(upgrade) {
+            if (upgrade.effect.type === 'superOrbTimer') {
+                superOrbDurationBonus += upgrade.effect.value;
+            } else if (upgrade.effect.type === 'orbletAttractionRadius') {
+                orbletAttractionBonus += ORBLET_ATTRACTION_RADIUS * upgrade.effect.value;
+            } else if (upgrade.effect.type === 'errorMarginShield') {
+                errorMarginShields += upgrade.effect.value;
+                updateShieldsDisplay();
+            }
+        }
+
         function loadSkin() {
             const savedSkin = localStorage.getItem(LOCAL_SKIN_KEY);
             if (savedSkin) {
                 currentSkin = savedSkin;
             }
         }
-        function spawnOrblet(force = false, isShower = false) {
-            if (orblets.length >= MAX_ORBLETS) return;
 
-            // Sporadic shower check - SADECE normal spawn'da kontrol et
-            if (!force && !isShower && Math.random() < 0.1) { 
+        function loadUpgrades() {
+            try {
+                const storedUpgrades = localStorage.getItem(LOCAL_UPGRADES_KEY);
+                purchasedUpgrades = storedUpgrades ? JSON.parse(storedUpgrades) : {};
+            } catch (error) {
+                console.error("Local Upgrades could not be loaded:", error);
+                purchasedUpgrades = {};
+            }
+        }
+
+        function saveUpgrades() {
+            try {
+                localStorage.setItem(LOCAL_UPGRADES_KEY, JSON.stringify(purchasedUpgrades));
+            } catch (error) {
+                console.error("Local Upgrades could not be saved:", error);
+            }
+        }
+
+        function spawnOrblet(force = false, isShower = false, isPrecisionTarget = false) {
+            if (orblets.length >= MAX_ORBLETS) {
+                console.warn("Max orblets reached, skipping spawn");
+                return;
+            }
+            if (isPrecisionTarget && hasPrecisionTarget) return;
+
+            if (!force && !isShower && !isPrecisionTarget && Math.random() < 0.1) { 
                 startOrbletShower();
-                return; // Shower başlattıktan sonra return et
+                return;
             }
 
             const ORBLET_RADIUS = 5;
@@ -340,41 +719,32 @@
                 y: isShower ? -ORBLET_RADIUS : Math.random() * (canvas.height - ORBLET_RADIUS * 2) + ORBLET_RADIUS,
                 radius: ORBLET_RADIUS,
                 velocityX: 0,
-                velocityY: isShower ? 2 + Math.random() * 3 : 0
+                velocityY: isShower ? 2 + Math.random() * 3 : 0,
+                isPrecisionTarget: isPrecisionTarget
             };
+
+            if (isPrecisionTarget) {
+                const edgeOffset = 20;
+                const side = Math.random() < 0.5 ? 'left' : 'right';
+                orblet.x = side === 'left' ? edgeOffset : canvas.width - edgeOffset;
+                orblet.y = flowZone.y + (flowZone.height / 2);
+                orblet.velocityY = (Math.random() - 0.5) * 2;
+                hasPrecisionTarget = true;
+            }
+
             orblets.push(orblet);
         }
 
         function startOrbletShower() {
-            // Shower için orblet sayısını sınırla
             const showerCount = Math.min(15, MAX_ORBLETS - orblets.length);
             
             for (let i = 0; i < showerCount; i++) {
                 const ORBLET_RADIUS = 5;
-                // Doğrudan oluştur, spawnOrblet'i çağırma (sonsuz döngü önlenir)
                 let orblet = {
                     x: Math.random() * (canvas.width - ORBLET_RADIUS * 2) + ORBLET_RADIUS,
-                    y: -ORBLET_RADIUS - (i * 10), // Her birini biraz daha yukarıdan başlat
+                    y: -ORBLET_RADIUS - (i * 10),
                     radius: ORBLET_RADIUS,
-                    velocityX: (Math.random() - 0.5) * 2, // Hafif yatay hareket
-                    velocityY: 2 + Math.random() * 3
-                };
-                orblets.push(orblet);
-            }
-        }
-
-        function startOrbletShower() {
-            // Shower için orblet sayısını sınırla
-            const showerCount = Math.min(15, MAX_ORBLETS - orblets.length);
-            
-            for (let i = 0; i < showerCount; i++) {
-                const ORBLET_RADIUS = 5;
-                // Doğrudan oluştur, spawnOrblet'i çağırma (sonsuz döngü önlenir)
-                let orblet = {
-                    x: Math.random() * (canvas.width - ORBLET_RADIUS * 2) + ORBLET_RADIUS,
-                    y: -ORBLET_RADIUS - (i * 10), // Her birini biraz daha yukarıdan başlat
-                    radius: ORBLET_RADIUS,
-                    velocityX: (Math.random() - 0.5) * 2, // Hafif yatay hareket
+                    velocityX: (Math.random() - 0.5) * 2,
                     velocityY: 2 + Math.random() * 3
                 };
                 orblets.push(orblet);
@@ -382,14 +752,13 @@
         }
 
         // =================================================================
-        //                 PROPORTIONAL INPUT LOGIC
+        //                 INPUT HANDLING
         // =================================================================
 
         function handlePressStart(e) {
              if (!animationFrameId) return; 
             if (isPressing) return;
 
-            // Eğer AudioContext başlamadıysa, ilk tıklamayı ses bağlamını başlatmak için kullan
             if (Tone.context.state !== 'running' && isAudioReady) {
                 startAudioContext();
             }
@@ -424,7 +793,6 @@
                 isPressing = false;
                 e.preventDefault(); 
                 
-                // Instant feedback sound
                 if (isAudioReady && Tone.context.state === 'running') {
                     pressFeedback.triggerAttackRelease("G6", "64n"); 
                 }
@@ -435,8 +803,81 @@
             }
         }
 
+        // =================================================================
+        //                 UI UPDATE FUNCTIONS
+        // =================================================================
 
-        // --- GAME LOOP, UPDATE, AND DRAW CODE ---
+        function updateScoreDisplayColors() {
+            const maxMultiplierForColor = 20;
+            const hueStart = 60;
+            const hueEnd = 0;
+            const hueRange = hueStart - hueEnd;
+
+            const clampedMultiplier = Math.min(scoreMultiplier, maxMultiplierForColor);
+            const hue = hueStart - (clampedMultiplier / maxMultiplierForColor) * hueRange;
+
+            const saturation = 80 + (clampedMultiplier / maxMultiplierForColor) * 20;
+            const lightness = 60 + (clampedMultiplier / maxMultiplierForColor) * 10;
+
+            const color = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+
+            scoreEl.style.color = color;
+            multiplierEl.style.color = color;
+        }
+
+        function updateShieldsDisplay() {
+            shieldsEl.textContent = errorMarginShields;
+        }
+
+        function updateQuestsUI() {
+            if (!activeQuestsContainer || !completedQuestsContainer) {
+                console.warn("Quests UI containers not found. Skipping update.");
+                return;
+            }
+
+            activeQuestsContainer.innerHTML = '';
+            completedQuestsContainer.innerHTML = '';
+
+            if (activeQuests.length === 0 && completedQuests.length === 0) {
+                activeQuestsContainer.innerHTML = '<p class="text-gray-400 text-center">No active quests. Keep playing!</p>';
+                return;
+            }
+
+            activeQuests.forEach(quest => {
+                const progress = questProgress[quest.id];
+                let progressText = '';
+
+                if (quest.type === 'maintainMultiplierDuration') {
+                    const currentDuration = (progress.currentDuration / 1000).toFixed(1);
+                    const targetDuration = (quest.target.duration / 1000).toFixed(1);
+                    progressText = `Progress: ${currentDuration}s / ${targetDuration}s at ${quest.target.multiplier}x`;
+                } else if (quest.type === 'collectOrbletsWhileSuperOrb') {
+                    progressText = `Collected: ${progress.collected} / ${quest.target.orblets} Orblets`;
+                } else if (quest.type === 'reachCombo') {
+                    progressText = `Current Combo: ${combo} / ${quest.target.combo}`;
+                }
+
+                const questEl = document.createElement('div');
+                questEl.className = 'bg-gray-700 p-4 rounded-lg shadow-md';
+                questEl.innerHTML = `
+                    <h3 class="text-xl font-bold text-cyan-300">${quest.description}</h3>
+                    <p class="text-gray-300 text-sm mb-2">${progressText}</p>
+                    <p class="text-yellow-400 font-bold">Reward: ${quest.reward.orblets} Orblets</p>
+                `;
+                activeQuestsContainer.appendChild(questEl);
+            });
+
+            completedQuests.forEach(quest => {
+                const questEl = document.createElement('div');
+                questEl.className = 'bg-gray-600 p-4 rounded-lg shadow-md opacity-70';
+                questEl.innerHTML = `
+                    <h3 class="text-xl font-bold text-green-400 line-through">${quest.description}</h3>
+                    <p class="text-gray-400 text-sm mb-2">Completed!</p>
+                    <p class="text-yellow-400 font-bold">Rewarded: ${quest.reward.orblets} Orblets</p>
+                `;
+                completedQuestsContainer.appendChild(questEl);
+            });
+        }
 
         function resizeCanvas() {
             const containerRect = canvasContainer.getBoundingClientRect();
@@ -463,24 +904,47 @@
             orb.y = canvas.height - 50;
         }
 
-        /**
-         * OYUNU KOŞULSUZ BAŞLATAN FONKSİYON
-         */
+        function initializeActiveQuests() {
+            if (activeQuests.length === 0) {
+                quests.slice(0, 2).forEach(quest => {
+                    activeQuests.push(quest);
+                    if (quest.type === 'maintainMultiplierDuration') {
+                        questProgress[quest.id] = { currentDuration: 0, currentMultiplier: 0 };
+                    } else if (quest.type === 'collectOrbletsWhileSuperOrb') {
+                        questProgress[quest.id] = { collected: 0 };
+                    } else if (quest.type === 'reachCombo') {
+                        questProgress[quest.id] = { currentCombo: 0 };
+                    }
+                });
+                saveQuestsState();
+            }
+        }
+
         function startGame() {
-            // Sesi başlatmayı dene
             if (isAudioReady) {
                 startAudioContext();
             }
             
             lastTimestamp = performance.now(); 
             
-            // Oyun döngüsünü başlat
+            selectRandomModifiers();
+            
+            tipTextEl.textContent = tips[Math.floor(Math.random() * tips.length)];
+            
             if (!animationFrameId) {
                 gameLoop();
                 statusMessageEl.textContent = 'CATCH THE RHYTHM!';
                 statusMessageEl.classList.remove('text-gray-400');
                 statusMessageEl.classList.add('text-cyan-400');
-                setInterval(spawnOrblet, 3000);
+                
+                const spawnInterval = 3000 / orbletSpawnMultiplier;
+                setInterval(() => spawnOrblet(), spawnInterval);
+                
+                setInterval(() => {
+                    if (!hasPrecisionTarget) {
+                        spawnOrblet(false, false, true);
+                    }
+                }, 10000);
             }
         }
 
@@ -489,26 +953,34 @@
             const deltaTime = currentTimestamp - lastTimestamp;
             lastTimestamp = currentTimestamp;
 
-            // Handle Super Orb Timer
             if (isSuperOrbActive) {
                 superOrbTimer -= deltaTime;
                 if (superOrbTimer <= 0) {
                     isSuperOrbActive = false;
-                    orb.radius = ORB_RADIUS; // Reset orb size
+                    orb.radius = ORB_RADIUS;
                     statusMessageEl.textContent = 'GET READY!';
                     statusMessageEl.classList.remove('text-yellow-400');
                 }
             }
 
-            // 1. Orb Physics
-            let currentGravity = GRAVITY;
+            if (activeEvent === 'gravityFlux') {
+                gravityFluxTimer += deltaTime;
+                if (gravityFluxTimer >= 15000) {
+                    gravityFluxTimer = 0;
+                    currentGravityMultiplier *= -1;
+                    statusMessageEl.textContent = 'GRAVITY FLIP!';
+                    canvasContainer.classList.add('shake');
+                    setTimeout(() => canvasContainer.classList.remove('shake'), 500);
+                }
+            }
+
+            let currentGravity = BASE_GRAVITY * currentGravityMultiplier;
             if (activeEvent === 'slowMo') {
                 currentGravity /= 2;
             }
             orb.velocityY += currentGravity;
             orb.y += orb.velocityY;
 
-            // 2. Screen Boundaries
             if (orb.y + orb.radius > canvas.height) {
                 orb.y = canvas.height - orb.radius;
                 orb.velocityY = 0;
@@ -518,7 +990,6 @@
                 orb.velocityY = 0;
             }
 
-            // 3. Flow Zone Movement
             let currentSpeed = flowZone.speed;
             if (activeEvent === 'slowMo') {
                 currentSpeed /= 2;
@@ -530,62 +1001,80 @@
             if (flowZone.y < 0) flowZone.y = 0;
             if (flowZone.y + flowZone.height > canvas.height) flowZone.y = canvas.height - flowZone.height;
 
-            // 4. "FLOW" CHECK
             const topOfOrb = orb.y - orb.radius;
             const bottomOfOrb = orb.y + orb.radius;
             const topOfZone = flowZone.y;
             const bottomOfZone = flowZone.y + flowZone.height;
 
-            // 5. Orblet Physics, Attraction, and Collection (Consolidated Loop)
             for (let i = orblets.length - 1; i >= 0; i--) {
                 const orblet = orblets[i];
 
-                // Apply attraction force if active
                 if (isSuperOrbActive || isOrbVacuumActive) {
                     const distanceX = orb.x - orblet.x;
                     const distanceY = orb.y - orblet.y;
                     const distance = Math.hypot(distanceX, distanceY);
 
-                    if (distance > 1 && distance < ORBLET_ATTRACTION_RADIUS) {
+                    const currentAttractionRadius = ORBLET_ATTRACTION_RADIUS + orbletAttractionBonus;
+
+                    if (distance > 1 && distance < currentAttractionRadius) {
                         const normalizedX = distanceX / distance;
                         const normalizedY = distanceY / distance;
-                        // Attraction strength that slightly decays with distance
-                        const attractionStrength = 0.2 * (1 - (distance / ORBLET_ATTRACTION_RADIUS) * 0.8); 
+                        const attractionStrength = 0.2 * (1 - (distance / currentAttractionRadius) * 0.8); 
 
                         orblet.velocityX += normalizedX * attractionStrength;
                         orblet.velocityY += normalizedY * attractionStrength;
                     }
                 }
 
-                // Update orblet position
                 orblet.x += orblet.velocityX;
                 orblet.y += orblet.velocityY;
 
-                // Apply friction
                 orblet.velocityX *= 0.95;
                 orblet.velocityY *= 0.95;
 
-                // Cap orblet velocity
                 orblet.velocityX = Math.max(-MAX_ORBLET_VELOCITY, Math.min(orblet.velocityX, MAX_ORBLET_VELOCITY));
                 orblet.velocityY = Math.max(-MAX_ORBLET_VELOCITY, Math.min(orblet.velocityY, MAX_ORBLET_VELOCITY));
 
-                // Despawn logic
                 if (orblet.y > canvas.height + orblet.radius || 
                     orblet.y < -orblet.radius ||
                     orblet.x > canvas.width + orblet.radius ||
                     orblet.x < -orblet.radius) {
                     orblets.splice(i, 1);
-                    continue; // Skip collision check for despawned orblet
+                    continue;
                 }
 
-                // Collision detection and collection
                 const distanceToOrb = Math.hypot(orb.x - orblet.x, orb.y - orblet.y);
                 if (distanceToOrb < orb.radius + orblet.radius) {
+                    const canvasRect = canvas.getBoundingClientRect();
+                    const particleCount = orblet.isPrecisionTarget ? 12 : 5;
+                    createBurstParticles(
+                        canvasRect.left + orblet.x, 
+                        canvasRect.top + orblet.y, 
+                        particleCount, 
+                        orblet.isPrecisionTarget ? '#FF00FF' : '#FFFF00'
+                    );
+                    
                     orblets.splice(i, 1);
-                    score += 100;
-                    totalOrblets++;
-                    orbletsEl.textContent = totalOrblets.toLocaleString();
-                    saveTotalOrblets();
+                    
+                    if (orblet.isPrecisionTarget) {
+                        hasPrecisionTarget = false;
+                        powerupProgress = orbletsForPowerup;
+                        statusMessageEl.textContent = 'PRECISION JUMP!';
+                        statusMessageEl.classList.remove('text-cyan-400', 'text-red-400', 'text-green-400');
+                        statusMessageEl.classList.add('text-purple-400', 'font-bold');
+                    } else {
+                        score += 100 * scoreMultiplierBonus;
+                        totalOrblets++;
+                        orbletsEl.textContent = totalOrblets.toLocaleString();
+                        saveTotalOrblets();
+
+                        activeQuests.forEach(quest => {
+                            if (quest.type === 'collectOrbletsWhileSuperOrb' && isSuperOrbActive) {
+                                questProgress[quest.id].collected++;
+                            }
+                        });
+                    }
+
                     if (isAudioReady && Tone.context.state === 'running') {
                         pressFeedback.triggerAttackRelease("C7", "32n");
                     }
@@ -596,12 +1085,12 @@
 
                     if (powerupProgress >= orbletsForPowerup) {
                         if (isSuperOrbActive) {
-                            superOrbTimer += 3000; // Extend duration by 3 seconds
+                            superOrbTimer += 3000;
                             statusMessageEl.textContent = 'SUPER ORB EXTENDED!';
                             statusMessageEl.classList.add('text-yellow-400');
                         } else {
                             isSuperOrbActive = true;
-                            superOrbTimer = 5000; // Initial 5 seconds
+                            superOrbTimer = 5000 + superOrbDurationBonus;
                             statusMessageEl.textContent = 'SUPER ORB ACTIVATED!';
                             statusMessageEl.classList.add('text-yellow-400');
                         }
@@ -614,159 +1103,522 @@
             const oldMultiplier = scoreMultiplier;
             const oldCombo = combo;
 
-            if (topOfOrb >= topOfZone && bottomOfOrb <= bottomOfZone) {
-                // IN FLOW
-                if (!isInFlow) {
-                    isInFlow = true;
-                    flowDurationMs = 0; 
-                    scoreMultiplier = 1;
-                    if(isAudioReady && Tone.context.state === 'running') flowPad.triggerAttack(currentFlowNote); 
+            const miniFlowZoneHeight = flowZone.height * MINI_FLOW_ZONE_HEIGHT_FACTOR;
+            const miniFlowZoneY = flowZone.y + (flowZone.height / 2) - (miniFlowZoneHeight / 2);
+            const wasInMiniFlow = isInMiniFlow;
+            isInMiniFlow = (topOfOrb >= miniFlowZoneY && bottomOfOrb <= (miniFlowZoneY + miniFlowZoneHeight));
 
-                    statusMessageEl.textContent = 'FLOW!'; 
-                    statusMessageEl.classList.add('text-cyan-400', 'font-bold');
-                    statusMessageEl.classList.remove('text-red-400', 'text-gray-400', 'text-green-400');
-                    canvas.classList.add('flow-active-shadow'); 
-                }
-                
-                // NEW SCORING: Time-Based Multiplier
-                flowDurationMs += deltaTime;
-                const secondsInFlow = Math.floor(flowDurationMs / TIME_TICK_MS);
-                
-                scoreMultiplier = 1 + (secondsInFlow * 2);
-
-                if (activeEvent === 'narrowZone') {
-                    scoreMultiplier *= 2;
-                }
-
-                score += scoreMultiplier * (deltaTime / 16.66); 
-                
-                combo++;
-                
-                if (combo === 100 && activeEvent === null) {
-                    activeEvent = 'slowMo';
-                    statusMessageEl.textContent = 'SLOW MO!';
-                    statusMessageEl.classList.add('text-blue-400');
-                    setTimeout(() => {
-                        activeEvent = null;
-                        statusMessageEl.textContent = 'GET READY!';
-                        statusMessageEl.classList.remove('text-blue-400');
-                    }, 5000);
-                }
-
-                if (combo === 250 && activeEvent === null) {
-                    activeEvent = 'narrowZone';
-                    statusMessageEl.textContent = 'NARROW ZONE!';
-                    statusMessageEl.classList.add('text-orange-400');
-                    setTimeout(() => {
-                        activeEvent = null;
-                        statusMessageEl.textContent = 'GET READY!';
-                        statusMessageEl.classList.remove('text-orange-400');
-                    }, 15000);
-                }
-
-                if (combo === 300 && activeEvent === null) {
-                    activeEvent = 'inversion';
-                    statusMessageEl.textContent = 'INVERSION!';
-                    statusMessageEl.classList.add('text-yellow-400');
-                    setTimeout(() => {
-                        activeEvent = null;
-                        statusMessageEl.textContent = 'GET READY!';
-                        statusMessageEl.classList.remove('text-yellow-400');
-                    }, 10000);
-                }
-
-                if (scoreMultiplier > oldMultiplier && isAudioReady && Tone.context.state === 'running') {
-                    missEffect.triggerAttackRelease("E5", "16n", Tone.now(), 0.5); 
-                }
-
-                if (combo % 50 === 0 && combo !== 0 && oldCombo < combo) {
-                    comboFlashRadius1 = 10; 
-                    comboFlashRadius2 = 1; 
-                    if (isAudioReady && Tone.context.state === 'running') {
-                        flowPad.triggerAttackRelease("A5", "16n"); 
-                    }
-                    isOrbVacuumActive = true;
-                    setTimeout(() => {
-                        isOrbVacuumActive = false;
-                    }, 3000);
-                }
-                
-                // Dynamic Difficulty
-                flowZone.speed = Math.min(MAX_ZONE_SPEED, BASE_ZONE_SPEED + (combo * 0.0001));
-                flowZone.height = Math.max(MIN_ZONE_HEIGHT, BASE_ZONE_HEIGHT - (combo * 0.05));
-                if (activeEvent === 'narrowZone') {
-                    flowZone.height /= 2;
-                }
-                
-                // Dynamic Color Cycling & Pitch Modulation
-                const baseHue = 180; 
-                let hueOffset = (combo % COMBO_COLOR_CYCLE) * (360 / COMBO_COLOR_CYCLE);
-                let dynamicHue = (baseHue + hueOffset) % 360;
-                
-                const minMidi = 60; 
-                const maxMidi = 74; 
-                const pitchRange = maxMidi - minMidi;
-                const maxComboForFullPitch = 300;
-                
-                let targetMidi = minMidi + Math.min(maxComboForFullPitch, combo) * (pitchRange / maxComboForFullPitch);
-                targetMidi = Math.round(targetMidi);
-                
-                const targetNote = Tone.Midi(targetMidi).toNote();
-                
-                if (targetNote !== currentFlowNote && isAudioReady && Tone.context.state === 'running') {
-                    currentFlowNote = targetNote;
-                    flowPad.frequency.rampTo(currentFlowNote, 0.2); 
-                }
-
-                const maxComboVisual = 300;
-                const saturation = Math.min(100, 30 + (combo / maxComboVisual) * 70); 
-                const lightness = Math.max(5, 12 - (combo / maxComboVisual) * 7); 
-
-                document.documentElement.style.setProperty('--bg-hue', dynamicHue);
-                document.documentElement.style.setProperty('--bg-saturation', `${saturation}%`);
-                document.documentElement.style.setProperty('--bg-lightness', `${lightness}%`);
-                
-            } else {
-                // OUT OF FLOW
-                if (isInFlow) {
-                    isInFlow = false;
-                    checkAndSaveScore(); 
-                    combo = 0; 
-                    flowDurationMs = 0;
-                    scoreMultiplier = 1; // Reset Multiplier
-                    comboFlashRadius1 = 0;
-                    comboFlashRadius2 = 0;
-                    
-                    if(isAudioReady && Tone.context.state === 'running') {
-                        flowPad.triggerRelease();
-                        missEffect.triggerAttackRelease("C2", "8n"); 
-                    }
-                    
-                    currentFlowNote = 'C4'; 
-                    flowZone.speed = BASE_ZONE_SPEED;
-                    flowZone.height = BASE_ZONE_HEIGHT;
-                    
-                    statusMessageEl.textContent = 'Rhythm Lost'; 
-                    statusMessageEl.classList.remove('text-cyan-400', 'font-bold', 'text-green-400');
-                    statusMessageEl.classList.add('text-red-400');
-                    canvas.classList.remove('flow-active-shadow');
-
-                    // Reset colors to original state
-                    document.documentElement.style.setProperty('--bg-hue', 220); 
-                    document.documentElement.style.setProperty('--bg-saturation', '20%');
-                    document.documentElement.style.setProperty('--bg-lightness', '8%');
-
-                    setTimeout(() => {
-                        if (!isInFlow && score <= highScore) { 
-                            statusMessageEl.textContent = 'GET READY!'; 
-                            statusMessageEl.classList.remove('text-red-400');
-                            statusMessageEl.classList.add('text-cyan-400');
+            if (perfectionistMode) {
+                if (isInMiniFlow) {
+                    if (!isInFlow) {
+                        isInFlow = true;
+                        flowDurationMs = 0;
+                        scoreMultiplier = 0;
+                        
+                        if (isShieldActive) {
+                            isShieldActive = false;
+                            shieldTimer = 0;
+                            statusMessageEl.textContent = 'SHIELD SAVED YOU - FLOW RESTORED!';
+                            statusMessageEl.classList.remove('text-red-400', 'text-gray-400', 'text-yellow-400');
+                            statusMessageEl.classList.add('text-green-400', 'font-bold');
+                            setTimeout(() => {
+                                if (isInFlow) {
+                                    statusMessageEl.textContent = 'PERFECT FLOW!';
+                                    statusMessageEl.classList.remove('text-green-400');
+                                    statusMessageEl.classList.add('text-purple-400');
+                                }
+                            }, 1000);
+                        } else {
+                            if(isAudioReady && Tone.context.state === 'running') flowPad.triggerAttack(currentFlowNote);
+                            statusMessageEl.textContent = 'PERFECT FLOW!';
+                            statusMessageEl.classList.add('text-purple-400', 'font-bold');
+                            statusMessageEl.classList.remove('text-red-400', 'text-gray-400', 'text-green-400');
                         }
-                    }, 1500);
+                        canvas.classList.add('flow-active-shadow');
+                    }
+                    
+                    flowDurationMs += deltaTime;
+                    perfectStreak += deltaTime / 1000;
+                    
+                    let potentialMultiplier = 0;
+                    if (flowDurationMs >= 1000) {
+                        potentialMultiplier = 3;
+                    }
+                    scoreMultiplier = potentialMultiplier;
+
+                    if (scoreMultiplier > oldMultiplier && isAudioReady && Tone.context.state === 'running') {
+                        missEffect.triggerAttackRelease("E5", "16n", Tone.now(), 0.5);
+                    }
+
+                    score += scoreMultiplier * scoreMultiplierBonus * (deltaTime / 16.66);
+                    combo++;
+
+                    if (isAudioReady && Tone.context.state === 'running') {
+                        drumBeatTimer += deltaTime;
+                        bassLineTimer += deltaTime;
+
+                        if (combo >= 20) {
+                            if (drumBeatTimer >= 500) {
+                                drumSynth.triggerAttackRelease("C2", "8n");
+                                drumBeatTimer = 0;
+                            }
+                        } else {
+                            drumBeatTimer = 0;
+                        }
+
+                        if (combo >= 50) {
+                            if (bassLineTimer >= 1000) {
+                                bassSynth.triggerAttackRelease(currentFlowNote, "2n");
+                                bassLineTimer = 0;
+                            }
+                        } else {
+                            bassLineTimer = 0;
+                        }
+                    }
+
+                    if (flowDurationMs >= 1000 && flowDurationMs < 2000) {
+                        if (multiplierFlashRadius1 === 0) {
+                            multiplierFlashRadius1 = 10;
+                            multiplierFlashRadius2 = 1;
+                            multiplierEl.classList.add('multiplier-animate');
+                            setTimeout(() => {
+                                multiplierEl.classList.remove('multiplier-animate');
+                            }, 300);
+                        }
+                    } else if (flowDurationMs >= 2000) {
+                        if (multiplierFlashRadius1 === 0 || (multiplierFlashRadius1 > 0 && multiplierFlashRadius1 < 50)) { 
+                            multiplierFlashRadius1 = 10; 
+                            multiplierFlashRadius2 = 1;
+                            multiplierEl.classList.add('multiplier-animate');
+                            setTimeout(() => {
+                                multiplierEl.classList.remove('multiplier-animate');
+                            }, 300);
+                        }
+                    }
+
+                    if (combo % 50 === 0 && combo !== 0 && oldCombo < combo) {
+                        comboFlashRadius1 = 10; 
+                        comboFlashRadius2 = 1;
+                        canvasContainer.classList.add('shake');
+                        setTimeout(() => canvasContainer.classList.remove('shake'), 500);
+                        
+                        const canvasRect = canvas.getBoundingClientRect();
+                        createBurstParticles(
+                            canvasRect.left + orb.x,
+                            canvasRect.top + orb.y,
+                            15, // Reduced from 20
+                            `hsl(${flowHue}, 100%, 75%)`
+                        );
+                        
+                        if (isAudioReady && Tone.context.state === 'running') {
+                            flowPad.triggerAttackRelease("A5", "16n"); 
+                        }
+                        isOrbVacuumActive = true;
+                        setTimeout(() => {
+                            isOrbVacuumActive = false;
+                        }, 3000);
+                    }
+                    
+                    flowZone.speed = Math.min(MAX_ZONE_SPEED, BASE_ZONE_SPEED + (combo * 0.0001));
+                    flowZone.height = Math.max(MIN_ZONE_HEIGHT, BASE_ZONE_HEIGHT - (combo * 0.05));
+                    
+                    const baseHue = 180; 
+                    let hueOffset = (combo % COMBO_COLOR_CYCLE) * (360 / COMBO_COLOR_CYCLE);
+                    let dynamicHue = (baseHue + hueOffset) % 360;
+                    
+                    const minMidi = 60; 
+                    const maxMidi = 74; 
+                    const pitchRange = maxMidi - minMidi;
+                    const maxComboForFullPitch = 300;
+                    
+                    let targetMidi = minMidi + Math.min(maxComboForFullPitch, combo) * (pitchRange / maxComboForFullPitch);
+                    targetMidi = Math.round(targetMidi);
+                    
+                    const targetNote = Tone.Midi(targetMidi).toNote();
+                    
+                    if (targetNote !== currentFlowNote && isAudioReady && Tone.context.state === 'running') {
+                        currentFlowNote = targetNote;
+                        flowPad.frequency.rampTo(currentFlowNote, 0.2); 
+                    }
+
+                    const maxComboVisual = 300;
+                    const saturation = Math.min(100, 30 + (combo / maxComboVisual) * 70); 
+                    const lightness = Math.max(5, 12 - (combo / maxComboVisual) * 7); 
+
+                    document.documentElement.style.setProperty('--bg-hue', dynamicHue);
+                    document.documentElement.style.setProperty('--bg-saturation', `${saturation}%`);
+                    document.documentElement.style.setProperty('--bg-lightness', `${lightness}%`);
+                } else {
+                    if (isInFlow) {
+                        isInFlow = false;
+                        perfectStreak = 0;
+                        
+                        if (errorMarginShields > 0) {
+                            errorMarginShields--;
+                            updateShieldsDisplay();
+                            isShieldActive = true;
+                            shieldTimer = 1500;
+                            statusMessageEl.textContent = 'SHIELD ACTIVATED! Re-enter Perfect Zone!';
+                            statusMessageEl.classList.remove('text-cyan-400', 'font-bold', 'text-green-400', 'text-red-400');
+                            statusMessageEl.classList.add('text-yellow-400', 'font-bold');
+                            if(isAudioReady && Tone.context.state === 'running') {
+                                missEffect.triggerAttackRelease("F4", "8n");
+                            }
+                        } else {
+                            checkAndSaveScore(); 
+                            combo = 0; 
+                            flowDurationMs = 0;
+                            scoreMultiplier = 1;
+                            miniFlowMultiplier = 1;
+                            comboFlashRadius1 = 0;
+                            comboFlashRadius2 = 0;
+                            multiplierFlashRadius1 = 0;
+                            multiplierFlashRadius2 = 0;
+                            drumBeatTimer = 0;
+                            bassLineTimer = 0;
+                            
+                            if(isAudioReady && Tone.context.state === 'running') {
+                                flowPad.triggerRelease();
+                                missEffect.triggerAttackRelease("C2", "8n"); 
+                            }
+                            
+                            currentFlowNote = 'C4'; 
+                            flowZone.speed = BASE_ZONE_SPEED * (activeModifiers.some(m => m.id === 'speedDemon') ? 2 : 1);
+                            flowZone.height = BASE_ZONE_HEIGHT;
+                            
+                            statusMessageEl.textContent = 'Perfect Lost!'; 
+                            statusMessageEl.classList.remove('text-cyan-400', 'font-bold', 'text-green-400', 'text-purple-400');
+                            statusMessageEl.classList.add('text-red-400');
+                            canvas.classList.remove('flow-active-shadow');
+
+                            document.documentElement.style.setProperty('--bg-hue', 220); 
+                            document.documentElement.style.setProperty('--bg-saturation', '20%');
+                            document.documentElement.style.setProperty('--bg-lightness', '8%');
+
+                            setTimeout(() => {
+                                if (!isInFlow && score <= highScore) { 
+                                    statusMessageEl.textContent = 'GET READY!'; 
+                                    statusMessageEl.classList.remove('text-red-400');
+                                    statusMessageEl.classList.add('text-cyan-400');
+                                }
+                            }, 1500);
+                        }
+                    }
+                }
+            } else {
+                if (topOfOrb >= topOfZone && bottomOfOrb <= bottomOfZone) {
+                    if (!isInFlow) {
+                        isInFlow = true;
+                        flowDurationMs = 0; 
+                        scoreMultiplier = 0;
+                        
+                        if (isShieldActive) {
+                            isShieldActive = false;
+                            shieldTimer = 0;
+                            statusMessageEl.textContent = 'SHIELD SAVED YOU - FLOW RESTORED!';
+                            statusMessageEl.classList.remove('text-red-400', 'text-gray-400', 'text-yellow-400');
+                            statusMessageEl.classList.add('text-green-400', 'font-bold');
+                            setTimeout(() => {
+                                if (isInFlow) {
+                                    statusMessageEl.textContent = 'FLOW!';
+                                    statusMessageEl.classList.remove('text-green-400');
+                                    statusMessageEl.classList.add('text-cyan-400');
+                                }
+                            }, 1000);
+                        } else {
+                            if(isAudioReady && Tone.context.state === 'running') flowPad.triggerAttack(currentFlowNote); 
+
+                            statusMessageEl.textContent = 'FLOW!'; 
+                            statusMessageEl.classList.add('text-cyan-400', 'font-bold');
+                            statusMessageEl.classList.remove('text-red-400', 'text-gray-400', 'text-green-400');
+                        }
+                        
+                        canvas.classList.add('flow-active-shadow'); 
+                    }
+                    
+                    flowDurationMs += deltaTime;
+
+                    if (isInMiniFlow) {
+                        perfectStreak += deltaTime / 1000;
+                        if (perfectStreak > maxPerfectStreak) {
+                            maxPerfectStreak = perfectStreak;
+                        }
+                    } else {
+                        perfectStreak = 0;
+                    }
+
+                    let potentialMultiplier = 0;
+
+                    if (flowDurationMs >= 1000) {
+                        if (isInMiniFlow) {
+                            potentialMultiplier = 3;
+                        } else {
+                            potentialMultiplier = 1;
+                        }
+                    } else {
+                        potentialMultiplier = 0;
+                    }
+                    scoreMultiplier = potentialMultiplier;
+                    miniFlowMultiplier = 1;
+
+                    if (scoreMultiplier > oldMultiplier && isAudioReady && Tone.context.state === 'running') {
+                        missEffect.triggerAttackRelease("E5", "16n", Tone.now(), 0.5); 
+                    }
+
+                    score += scoreMultiplier * scoreMultiplierBonus * (deltaTime / 16.66); 
+                    
+                    combo++;
+
+                    if (isAudioReady && Tone.context.state === 'running') {
+                        drumBeatTimer += deltaTime;
+                        bassLineTimer += deltaTime;
+
+                        if (combo >= 20) {
+                            if (drumBeatTimer >= 500) {
+                                drumSynth.triggerAttackRelease("C2", "8n");
+                                drumBeatTimer = 0;
+                            }
+                        } else {
+                            drumBeatTimer = 0;
+                        }
+
+                        if (combo >= 50) {
+                            if (bassLineTimer >= 1000) {
+                                bassSynth.triggerAttackRelease(currentFlowNote, "2n");
+                                bassLineTimer = 0;
+                            }
+                        } else {
+                            bassLineTimer = 0;
+                        }
+                    }
+
+                    if (flowDurationMs >= 1000 && flowDurationMs < 2000) {
+                        if (multiplierFlashRadius1 === 0) {
+                            multiplierFlashRadius1 = 10;
+                            multiplierFlashRadius2 = 1;
+                            multiplierEl.classList.add('multiplier-animate');
+                            setTimeout(() => {
+                                multiplierEl.classList.remove('multiplier-animate');
+                            }, 300);
+                        }
+                    } else if (flowDurationMs >= 2000) {
+                        if (multiplierFlashRadius1 === 0 || (multiplierFlashRadius1 > 0 && multiplierFlashRadius1 < 50)) { 
+                            multiplierFlashRadius1 = 10; 
+                            multiplierFlashRadius2 = 1;
+                            multiplierEl.classList.add('multiplier-animate');
+                            setTimeout(() => {
+                                multiplierEl.classList.remove('multiplier-animate');
+                            }, 300);
+                        }
+                    }
+
+                    if (combo % 50 === 0 && combo !== 0 && oldCombo < combo) {
+                        comboFlashRadius1 = 10; 
+                        comboFlashRadius2 = 1;
+                        canvasContainer.classList.add('shake');
+                        setTimeout(() => canvasContainer.classList.remove('shake'), 500);
+                        
+                        const canvasRect = canvas.getBoundingClientRect();
+                        createBurstParticles(
+                            canvasRect.left + orb.x,
+                            canvasRect.top + orb.y,
+                            15, // Reduced from 20
+                            `hsl(${parseInt(document.documentElement.style.getPropertyValue('--bg-hue')) || 180}, 100%, 75%)`
+                        );
+                        
+                        if (isAudioReady && Tone.context.state === 'running') {
+                            flowPad.triggerAttackRelease("A5", "16n"); 
+                        }
+                        isOrbVacuumActive = true;
+                        setTimeout(() => {
+                            isOrbVacuumActive = false;
+                        }, 3000);
+                    }
+                    
+                    flowZone.speed = Math.min(MAX_ZONE_SPEED, BASE_ZONE_SPEED + (combo * 0.0001));
+                    flowZone.height = Math.max(MIN_ZONE_HEIGHT, BASE_ZONE_HEIGHT - (combo * 0.05));
+                    if (activeEvent === 'narrowZone') {
+                        flowZone.height /= 2;
+                    }
+                    
+                    const baseHue = 180; 
+                    let hueOffset = (combo % COMBO_COLOR_CYCLE) * (360 / COMBO_COLOR_CYCLE);
+                    let dynamicHue = (baseHue + hueOffset) % 360;
+                    
+                    const minMidi = 60; 
+                    const maxMidi = 74; 
+                    const pitchRange = maxMidi - minMidi;
+                    const maxComboForFullPitch = 300;
+                    
+                    let targetMidi = minMidi + Math.min(maxComboForFullPitch, combo) * (pitchRange / maxComboForFullPitch);
+                    targetMidi = Math.round(targetMidi);
+                    
+                    const targetNote = Tone.Midi(targetMidi).toNote();
+                    
+                    if (targetNote !== currentFlowNote && isAudioReady && Tone.context.state === 'running') {
+                        currentFlowNote = targetNote;
+                        flowPad.frequency.rampTo(currentFlowNote, 0.2); 
+                    }
+
+                    const maxComboVisual = 300;
+                    const saturation = Math.min(100, 30 + (combo / maxComboVisual) * 70); 
+                    const lightness = Math.max(5, 12 - (combo / maxComboVisual) * 7); 
+
+                    document.documentElement.style.setProperty('--bg-hue', dynamicHue);
+                    document.documentElement.style.setProperty('--bg-saturation', `${saturation}%`);
+                    document.documentElement.style.setProperty('--bg-lightness', `${lightness}%`);
+                    
+                } else {
+                    if (isInFlow) {
+                        isInFlow = false;
+                        perfectStreak = 0;
+                        
+                        if (errorMarginShields > 0) {
+                            errorMarginShields--;
+                            updateShieldsDisplay();
+                            isShieldActive = true;
+                            shieldTimer = 1500;
+                            statusMessageEl.textContent = 'SHIELD ACTIVATED! Re-enter Flow!';
+                            statusMessageEl.classList.remove('text-cyan-400', 'font-bold', 'text-green-400', 'text-red-400');
+                            statusMessageEl.classList.add('text-yellow-400', 'font-bold');
+                            if(isAudioReady && Tone.context.state === 'running') {
+                                missEffect.triggerAttackRelease("F4", "8n");
+                            }
+                        } else {
+                            checkAndSaveScore(); 
+                            combo = 0; 
+                            flowDurationMs = 0;
+                            scoreMultiplier = 1;
+                            miniFlowMultiplier = 1;
+                            comboFlashRadius1 = 0;
+                            comboFlashRadius2 = 0;
+                            multiplierFlashRadius1 = 0;
+                            multiplierFlashRadius2 = 0;
+                            drumBeatTimer = 0;
+                            bassLineTimer = 0;
+                            
+                            if(isAudioReady && Tone.context.state === 'running') {
+                                flowPad.triggerRelease();
+                                missEffect.triggerAttackRelease("C2", "8n"); 
+                            }
+                            
+                            currentFlowNote = 'C4'; 
+                            flowZone.speed = BASE_ZONE_SPEED * (activeModifiers.some(m => m.id === 'speedDemon') ? 2 : 1);
+                            flowZone.height = BASE_ZONE_HEIGHT;
+                            
+                            statusMessageEl.textContent = 'Rhythm Lost'; 
+                            statusMessageEl.classList.remove('text-cyan-400', 'font-bold', 'text-green-400');
+                            statusMessageEl.classList.add('text-red-400');
+                            canvas.classList.remove('flow-active-shadow');
+
+                            document.documentElement.style.setProperty('--bg-hue', 220); 
+                            document.documentElement.style.setProperty('--bg-saturation', '20%');
+                            document.documentElement.style.setProperty('--bg-lightness', '8%');
+
+                            setTimeout(() => {
+                                if (!isInFlow && score <= highScore) { 
+                                    statusMessageEl.textContent = 'GET READY!'; 
+                                    statusMessageEl.classList.remove('text-red-400');
+                                    statusMessageEl.classList.add('text-cyan-400');
+                                }
+                            }, 1500);
+                        }
+                    }
+                }
+            }
+
+            if (isShieldActive) {
+                shieldTimer -= deltaTime;
+                if (shieldTimer <= 0) {
+                    isShieldActive = false;
+                    if (!isInFlow) {
+                        checkAndSaveScore(); 
+                        combo = 0; 
+                        flowDurationMs = 0;
+                        scoreMultiplier = 1;
+                        miniFlowMultiplier = 1;
+                        comboFlashRadius1 = 0;
+                        comboFlashRadius2 = 0;
+                        multiplierFlashRadius1 = 0;
+                        multiplierFlashRadius2 = 0;
+                        drumBeatTimer = 0;
+                        bassLineTimer = 0;
+                        
+                        if(isAudioReady && Tone.context.state === 'running') {
+                            flowPad.triggerRelease();
+                            missEffect.triggerAttackRelease("C2", "8n"); 
+                        }
+                        
+                        currentFlowNote = 'C4'; 
+                        flowZone.speed = BASE_ZONE_SPEED * (activeModifiers.some(m => m.id === 'speedDemon') ? 2 : 1);
+                        flowZone.height = BASE_ZONE_HEIGHT;
+                        
+                        statusMessageEl.textContent = 'Rhythm Lost (Shield Expired)'; 
+                        statusMessageEl.classList.remove('text-cyan-400', 'font-bold', 'text-green-400', 'text-yellow-400');
+                        statusMessageEl.classList.add('text-red-400');
+                        canvas.classList.remove('flow-active-shadow');
+
+                        document.documentElement.style.setProperty('--bg-hue', 220); 
+                        document.documentElement.style.setProperty('--bg-saturation', '20%');
+                        document.documentElement.style.setProperty('--bg-lightness', '8%');
+
+                        setTimeout(() => {
+                            if (!isInFlow && score <= highScore) { 
+                                statusMessageEl.textContent = 'GET READY!'; 
+                                statusMessageEl.classList.remove('text-red-400');
+                                statusMessageEl.classList.add('text-cyan-400');
+                            }
+                        }, 1500);
+                    }
                 }
             }
             
-            // Combo Flash Animation
+            activeQuests.forEach((quest) => {
+                let progress = questProgress[quest.id];
+                if (!progress) return; // Safety check
+                
+                let isCompleted = false;
+
+                if (quest.type === 'maintainMultiplierDuration') {
+                    if (scoreMultiplier >= quest.target.multiplier) {
+                        progress.currentDuration += deltaTime;
+                        if (progress.currentDuration >= quest.target.duration) {
+                            isCompleted = true;
+                        }
+                    } else {
+                        progress.currentDuration = 0;
+                    }
+                } else if (quest.type === 'collectOrbletsWhileSuperOrb') {
+                    if (progress.collected >= quest.target.orblets) {
+                        isCompleted = true;
+                    }
+                } else if (quest.type === 'reachCombo') {
+                    if (combo >= quest.target.combo) {
+                        isCompleted = true;
+                    }
+                }
+
+                if (isCompleted) {
+                    totalOrblets += quest.reward.orblets;
+                    orbletsEl.textContent = totalOrblets.toLocaleString();
+                    saveTotalOrblets();
+
+                    completedQuests.push(quest);
+                    const questIndex = activeQuests.findIndex(q => q.id === quest.id);
+                    if (questIndex !== -1) {
+                        activeQuests.splice(questIndex, 1);
+                    }
+                    delete questProgress[quest.id];
+
+                    statusMessageEl.textContent = `QUEST COMPLETED: ${quest.description}! +${quest.reward.orblets} Orblets!`;
+                    statusMessageEl.classList.remove('text-cyan-400', 'text-red-400', 'text-yellow-400', 'text-purple-400');
+                    statusMessageEl.classList.add('text-green-400', 'font-bold');
+
+                    saveQuestsState();
+                    setTimeout(() => updateQuestsUI(), 100); // Async update
+                }
+            });
+
             if (comboFlashRadius1 > 0) {
                 comboFlashRadius1 += 8; 
                 comboFlashRadius2 += 5; 
@@ -776,9 +1628,19 @@
                 }
             }
 
-            // Update Score/Combo UI
+            if (multiplierFlashRadius1 > 0) {
+                multiplierFlashRadius1 += 10;
+                multiplierFlashRadius2 += 7;
+                if (multiplierFlashRadius1 > canvas.width * 0.9) {
+                    multiplierFlashRadius1 = 0;
+                    multiplierFlashRadius2 = 0;
+                }
+            }
+
             scoreEl.textContent = Math.floor(score).toLocaleString(); 
             multiplierEl.textContent = scoreMultiplier; 
+            perfectStreakEl.textContent = Math.floor(perfectStreak);
+            updateScoreDisplayColors();
         }
 
         function draw() {
@@ -786,13 +1648,11 @@
             const isFlowing = isInFlow;
             const currentCombo = combo;
             
-            // 1. Ekranı Temizle (Clean Clear)
             ctx.fillStyle = '#0f0c1c'; 
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             ctx.globalCompositeOperation = 'lighter'; 
 
-            // Combo Flash Ring
             if (comboFlashRadius1 > 0) {
                 const maxRadius = canvas.width * 0.9;
                 
@@ -815,7 +1675,28 @@
                 }
             }
 
-            // 2. Draw Flow Zone
+            if (multiplierFlashRadius1 > 0) {
+                const maxRadius = canvas.width * 0.9;
+                
+                ctx.beginPath();
+                ctx.arc(orb.x, orb.y, multiplierFlashRadius1, 0, Math.PI * 2);
+                const alpha1 = 1 - (multiplierFlashRadius1 / maxRadius);
+                ctx.strokeStyle = `hsla(120, 100%, 75%, ${alpha1 * 0.9})`;
+                ctx.lineWidth = 6;
+                ctx.stroke();
+                ctx.closePath();
+
+                if (multiplierFlashRadius2 > 0) {
+                    ctx.beginPath();
+                    ctx.arc(orb.x, orb.y, multiplierFlashRadius2, 0, Math.PI * 2);
+                    const alpha2 = 1 - (multiplierFlashRadius2 / maxRadius);
+                    ctx.strokeStyle = `hsla(120, 100%, 50%, ${alpha2 * 0.5})`;
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    ctx.closePath();
+                }
+            }
+
             ctx.fillStyle = `hsla(${flowHue}, ${isFlowing ? 90 : 50}%, ${isFlowing ? 30 : 20}%, 0.15)`;
             ctx.fillRect(0, flowZone.y - 5, canvas.width, flowZone.height + 10);
 
@@ -830,18 +1711,45 @@
             ctx.strokeRect(0, flowZone.y, canvas.width, flowZone.height);
             ctx.lineWidth = 1; 
 
-            // 3. Draw Orblets
-            ctx.fillStyle = 'rgba(255, 255, 0, 0.8)';
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = 'rgba(255, 255, 0, 0.8)';
+            const miniFlowZoneHeight = flowZone.height * MINI_FLOW_ZONE_HEIGHT_FACTOR;
+            const miniFlowZoneY = flowZone.y + (flowZone.height / 2) - (miniFlowZoneHeight / 2);
+            
+            let miniFlowAlpha = isFlowing ? 0.6 : 0.2;
+            let miniFlowBrightness = 80;
+            let miniFlowLineWidth = isFlowing ? 3 : 1;
+
+            if (miniFlowMultiplier > 1) {
+                const pulse = Math.sin(performance.now() / 100) * 0.2 + 0.8;
+                miniFlowAlpha = 0.6 + (miniFlowMultiplier - 1) * 0.1 * pulse;
+                miniFlowBrightness = 80 + (miniFlowMultiplier - 1) * 5 * pulse;
+                miniFlowLineWidth = 3 + (miniFlowMultiplier - 1) * 0.5;
+            }
+
+            ctx.fillStyle = `hsla(${flowHue}, 100%, ${miniFlowBrightness}%, ${miniFlowAlpha})`;
+            ctx.fillRect(0, miniFlowZoneY, canvas.width, miniFlowZoneHeight);
+            ctx.strokeStyle = `hsla(${flowHue}, 100%, 90%, 1)`;
+            ctx.lineWidth = miniFlowLineWidth;
+            ctx.strokeRect(0, miniFlowZoneY, canvas.width, miniFlowZoneHeight);
+            ctx.lineWidth = 1;
+
             orblets.forEach(orblet => {
                 ctx.beginPath();
                 ctx.arc(orblet.x, orblet.y, orblet.radius, 0, Math.PI * 2);
+                
+                if (orblet.isPrecisionTarget) {
+                    const pulse = Math.sin(performance.now() / 150) * 0.5 + 0.5;
+                    ctx.fillStyle = `rgba(255, 0, 255, ${0.6 + pulse * 0.4})`;
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = `rgba(255, 0, 255, ${0.8 + pulse * 0.2})`;
+                } else {
+                    ctx.fillStyle = 'rgba(255, 255, 0, 0.8)';
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = 'rgba(255, 255, 0, 0.8)';
+                }
                 ctx.fill();
+                ctx.shadowBlur = 0;
             });
-            ctx.shadowBlur = 0;
 
-            // 4. Draw Orb 
             const orbColor = isFlowing ? `hsl(${flowHue}, 100%, 75%)` : currentSkin;
             const orbGlowColor = isFlowing ? `hsla(${flowHue}, 100%, 70%, 1)` : 'rgba(255, 255, 255, 0.5)';
             
@@ -891,10 +1799,20 @@
                 ctx.closePath();
             }
 
+            if (isShieldActive) {
+                const shieldRadius = orb.radius + 10;
+                const shieldAlpha = shieldTimer / 1500;
+                ctx.beginPath();
+                ctx.arc(orb.x, orb.y, shieldRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(138, 43, 226, ${shieldAlpha})`;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.closePath();
+            }
+
             ctx.globalCompositeOperation = 'source-over';
         }
 
-        // --- GAME LOOP ---
         function gameLoop() {
             update();
             draw();
@@ -902,21 +1820,62 @@
         }
 
         // =================================================================
-        //                       INITIALIZATION AND EVENT LISTENERS
+        //                       INITIALIZATION
         // =================================================================
 
         window.onload = function() {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            scoreEl = document.getElementById('score');
+            multiplierEl = document.getElementById('multiplier');
+            highScoreEl = document.getElementById('highScore');
+            statusMessageEl = document.getElementById('statusMessage');
+            canvasContainer = document.getElementById('canvasContainer');
+            powerupBarEl = document.getElementById('powerupBar');
+            orbletsEl = document.getElementById('orblets');
+            shieldsEl = document.getElementById('shields');
+            questsButton = document.getElementById('questsButton');
+            questsMenu = document.getElementById('questsMenu');
+            closeQuestsMenu = document.getElementById('closeQuestsMenu');
+            activeQuestsContainer = document.getElementById('activeQuestsContainer');
+            completedQuestsContainer = document.getElementById('completedQuestsContainer');
+            particleContainer = document.getElementById('particleContainer');
+            modifierDisplay = document.getElementById('modifierDisplay');
+            perfectStreakEl = document.getElementById('perfectStreak');
+            tipTextEl = document.getElementById('tipText');
+
+            if (!canvas || !ctx || !questsButton || !questsMenu) {
+                console.error("Critical game elements missing! Cannot start.");
+                return;
+            }
+
             loadHighScore(); 
             loadTotalOrblets();
             loadSkin();
+            loadUpgrades();
+            
+            upgrades.forEach(upgrade => {
+                if (purchasedUpgrades[upgrade.id]) {
+                    applyUpgradeEffect(upgrade);
+                }
+            });
+            updateShieldsDisplay();
+            loadQuestsState();
+            initializeActiveQuests();
+            updateQuestsUI();
+
             populateSkinsMenu();
             setupAudio();
             resizeCanvas();
             
-            // OYUN DİREKT BAŞLIYOR!
             startGame(); 
 
-            // Olay dinleyicilerini kur
+            setInterval(() => {
+                if (activeQuests.length > 0 || Object.keys(questProgress).length > 0) {
+                    saveQuestsState();
+                }
+            }, 5000);
+
             window.addEventListener('keydown', handlePressStart);
             window.addEventListener('keyup', handlePressEnd);
 
@@ -935,17 +1894,59 @@
             document.getElementById('closeSkinsMenu').addEventListener('click', () => {
                 document.getElementById('skinsMenu').classList.add('hidden');
             });
+
+            document.getElementById('upgradesButton').addEventListener('click', () => {
+                document.getElementById('upgradesMenu').classList.remove('hidden');
+                populateUpgradesMenu();
+            });
+
+            document.getElementById('closeUpgradesMenu').addEventListener('click', () => {
+                document.getElementById('upgradesMenu').classList.add('hidden');
+            });
+
+            questsButton.addEventListener('click', () => {
+                questsMenu.classList.remove('hidden');
+                updateQuestsUI();
+            });
+
+            closeQuestsMenu.addEventListener('click', () => {
+                questsMenu.classList.add('hidden');
+            });
         };
 
     </script>
 
-    <div id="skinsMenu" class="hidden absolute top-0 left-0 w-full h-full bg-black bg-opacity-50 flex items-center justify-center">
-        <div class="bg-gray-800 p-8 rounded-lg shadow-lg text-white">
+    <div id="skinsMenu" class="hidden absolute top-0 left-0 w-full h-full bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-lg text-white max-w-2xl">
             <h2 class="text-2xl font-bold mb-4">Unlock New Orb Skins</h2>
-            <div id="skinsContainer" class="grid grid-cols-3 gap-4">
-                <!-- Skins will be dynamically added here -->
+            <div id="skinsContainer" class="grid grid-cols-3 gap-4 mb-4">
             </div>
             <button id="closeSkinsMenu" class="mt-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <div id="upgradesMenu" class="hidden absolute top-0 left-0 w-full h-full bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-lg text-white max-w-2xl max-h-screen overflow-y-auto">
+            <h2 class="text-2xl font-bold mb-4">Orb Upgrades</h2>
+            <div id="upgradesContainer" class="grid grid-cols-1 gap-4">
+            </div>
+            <button id="closeUpgradesMenu" class="mt-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <div id="questsMenu" class="hidden absolute top-0 left-0 w-full h-full bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-lg text-white w-11/12 max-w-2xl max-h-screen overflow-y-auto">
+            <h2 class="text-2xl font-bold mb-4 text-center">Active Quests</h2>
+            <div id="activeQuestsContainer" class="grid grid-cols-1 gap-4 mb-6">
+            </div>
+            <h2 class="text-2xl font-bold mb-4 text-center">Completed Quests</h2>
+            <div id="completedQuestsContainer" class="grid grid-cols-1 gap-4">
+            </div>
+            <button id="closeQuestsMenu" class="mt-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded mx-auto block">
                 Close
             </button>
         </div>
